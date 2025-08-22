@@ -1,0 +1,299 @@
+/* Global Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Arial', sans-serif;
+  background-color: black;
+  color: white;
+  overflow-x: hidden;
+}
+
+/* Home Section Styles */
+.home-section {
+  position: relative;
+  width: 100%;
+  height: 100vh; /* Full viewport height */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.video-container {
+  position: relative;
+  top: 0;
+  width: 100%;
+  height: 100%; /* Occupies full viewport height */
+}
+
+.background-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%; /* Adjust to cover the entire container */
+  height: 100%; /* Adjust to cover the entire container */
+  object-fit: cover;
+  filter: blur(3px);
+}
+
+.overlay-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  border-radius: 10px;
+  text-align: center;
+  z-index: 1;
+  opacity: 0; /* Initially hidden */
+  animation: fadeIn 1s ease-in-out forwards; /* Add fade-in animation */
+}
+
+.overlay-message h1 {
+  font-size: 3rem;
+  margin-bottom: 20px;
+  background: linear-gradient(90deg, rgb(82, 238, 10) 0%, rgba(0,255,179,1) 50%, rgba(0,36,255,1) 100%);
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  animation: textAnimate 10s cubic-bezier(0.25, 0.1, 0.25, 1) infinite, fadeIn 1.5s ease-out forwards;
+  
+}
+
+.overlay-message p {
+  font-size: 1.5rem;
+  max-width: 800px; /* Keep this for larger screens */
+  margin: 0 auto;
+  animation: fadeIn 2s ease-in-out forwards; /* Fade-in animation */
+  animation-delay: 1s; /* Delay for smooth effect */
+}
+
+/* Smooth Text Animate Keyframes */
+@keyframes textAnimate {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+/* Fade-in Keyframes */
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Info Section */
+.info-section {
+  width: 100%;
+  height: 100vh; 
+  display: flex;
+  justify-content: center;
+}
+
+.info-container {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.info-container h1 {
+  font-size: 4rem;
+  padding-bottom: 30px;
+  margin-top: 8%;
+  background: linear-gradient(90deg, rgb(0, 110, 255) 0%, rgb(39, 250, 2) 25%, rgb(0, 217, 255) 50%, rgb(127, 255, 16) 75%, rgb(30, 255, 0) 100%);
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  animation: textAnimate 10s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+  text-align: justify;
+}
+
+.info-container p {
+  font-size: 1.3rem;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+/* Info Paragraph Section */
+/* Keyframes for smooth color-changing box-shadow */
+@keyframes colorChangeShadow {
+  0% {
+    box-shadow: 0px 0px 63px 16px rgba(126,211,33,1),
+                25px 0px 20px -20px rgba(0,0,0,0.25),
+                0px 25px 20px -20px rgba(0,0,0,0.25),
+                -25px 0px 20px -20px rgba(0,0,0,0.25);
+  }
+  25% {
+    box-shadow: 0px 0px 63px 16px rgba(0,191,255,1),
+                25px 0px 20px -20px rgba(0,0,0,0.25),
+                0px 25px 20px -20px rgba(0,0,0,0.25),
+                -25px 0px 20px -20px rgba(0,0,0,0.25);
+  }
+  50% {
+    box-shadow: 0px 0px 63px 16px rgba(255,69,0,1),
+                25px 0px 20px -20px rgba(0,0,0,0.25),
+                0px 25px 20px -20px rgba(0,0,0,0.25),
+                -25px 0px 20px -20px rgba(0,0,0,0.25);
+  }
+  75% {
+    box-shadow: 0px 0px 63px 16px rgba(238,130,238,1),
+                25px 0px 20px -20px rgba(0,0,0,0.25),
+                0px 25px 20px -20px rgba(0,0,0,0.25),
+                -25px 0px 20px -20px rgba(0,0,0,0.25);
+  }
+  100% {
+    box-shadow: 0px 0px 63px 16px rgba(126,211,33,1),
+                25px 0px 20px -20px rgba(0,0,0,0.45),
+                0px 25px 20px -20px rgba(0,0,0,0.45),
+                -25px 0px 20px -20px rgba(0,0,0,0.45);
+  }
+}
+
+/* Apply the animation to .info-p */
+.info-p {
+  display: flex;
+  flex-direction: row-reverse;
+  padding: 50px 100px;
+  align-items: center;
+  margin-top: 2%;
+  justify-content: space-around;
+  border-radius: 30px;
+  animation: colorChangeShadow 15s infinite ease-in-out;
+  background-color: rgba(240, 248, 255, 0.08);
+}
+
+.info-p p {
+  max-width: 600px;
+  text-align: center;
+  line-height: 1.5;
+  font-size: 1.3rem;
+}
+
+.gov-schemes-text {
+  margin-top: 5%;
+  text-align: center;
+  font-size: 1.3rem; /* Default font size */
+  border-radius: 30px;
+  margin-bottom: 20px;
+  line-height: 1.5;
+  background-color: rgba(33, 33, 33, 0.565); /* Semi-transparent background */
+  font-weight: bolder;
+  box-shadow: 0px 5px 50px rgba(115, 255, 0, 0.711);
+  padding: 20px;
+}
+
+/* For the text inside */
+.gov-schemes-text p {
+  font-family: "Cormorant Garamond", serif;
+  font-weight: 400;
+  font-style: normal;
+  color: bisque;
+  margin: 0;
+}
+
+/* Responsive design for tablets and smaller devices */
+@media (max-width: 768px) {
+  .gov-schemes-text {
+    font-size: 1.1rem; /* Adjust font size */
+    padding: 15px; /* Reduce padding */
+    margin-top: 3%;
+  }
+  
+  .gov-schemes-text p {
+    font-size: 1rem; /* Smaller text for mobile */
+  }
+}
+
+/* For mobile devices */
+@media (max-width: 480px) {
+  .gov-schemes-text {
+    font-size: 1rem; /* Further reduce font size */
+    padding: 10px; /* Reduce padding */
+    margin-top: 2%;
+  }
+  
+  .gov-schemes-text p {
+    font-size: 0.9rem; /* Small text for mobile */
+  }
+}
+
+
+/* Media Queries for Responsiveness */
+
+/* Tablet Devices and Smaller */
+@media screen and (max-width: 768px) {
+  .overlay-message h1 {
+    font-size: 2rem;
+  }
+
+  .overlay-message p {
+    font-size: 1.1rem;
+    padding: 0 20px;
+  }
+
+  .info-container h1 {
+    font-size: 2rem;
+  }
+
+  .info-container p {
+    font-size: 1.1rem;
+  }
+
+  .info-p {
+    flex-direction: column; /* Stack elements vertically */
+    padding: 30px;
+  }
+
+  .info-p p {
+    max-width: 90%; /* Reduce width on smaller devices */
+    font-size: 1.1rem;
+    padding-top: 10px;
+  }
+}
+
+/* Mobile Devices */
+@media screen and (max-width: 480px) {
+  .overlay-message h1 {
+    font-size: 1.5rem;
+  }
+
+  .overlay-message p {
+    font-size: 1rem;
+    padding: 0 5px;
+    line-height: 1.2;
+  }
+
+  .info-container h1 {
+    font-size: 1.8rem;
+    padding: 10px;
+    margin: 10px;
+    margin-top: 50px;
+
+  }
+
+  .info-container p {
+    font-size: 1rem;
+    margin-bottom: 20px;
+  }
+
+  .info-p {
+    padding: 20px;
+    margin-top: 50px;
+    margin-bottom: 80px;
+  }
+
+  .info-p p {
+    max-width: 100%;
+    font-size: 1rem;
+    line-height: 1.4; /* Adjust for better readability */
+  }
+}

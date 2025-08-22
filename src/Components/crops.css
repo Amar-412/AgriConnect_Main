@@ -1,0 +1,134 @@
+/* General styles */
+.projects-section {
+  text-align: center;
+  padding: 40px;
+}
+
+.projects-section h1{
+  margin-bottom: 10px;
+  font-size: 4em;
+  background: linear-gradient(90deg, rgb(0, 110, 255) 0%,rgb(39, 250, 2) 25%, rgb(0, 217, 255) 50%,rgb(127, 255, 16) 75%, rgb(30, 255, 0) 100%);
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  animation: textAnimate 10s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+}
+
+
+
+.projects-section p{
+  margin-bottom: 5%;
+  font-size: 1.8em;
+}
+
+.gallery {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  
+  gap: 20px;
+}
+
+.gallery-item {
+  position: relative;
+  overflow: hidden;
+  border: solid 2px rgb(50, 245, 11); /* Initial border */
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  flex-basis: auto;
+  width: 300px; /* Fixed width for consistency */
+  height: auto;
+  transition: border-color 0.5s ease, box-shadow 0.5s ease; /* Smooth transition for hover effect */
+}
+
+.gallery-item:hover {
+  border-color: rgb(255, 0, 150); /* Change border color on hover */
+  box-shadow: 0 4px 15px rgba(255, 0, 150, 0.6); /* Increase shadow on hover */
+}
+
+.gallery-item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  border: 4px solid transparent; /* Initially no visible border */
+  box-sizing: border-box;
+  z-index: 1;
+  animation: borderGrow 1.5s linear infinite; /* Continuous animation */
+}
+
+@keyframes borderGrow {
+  0% {
+    border-color: transparent;
+  }
+  50% {
+    border-color: rgba(50, 245, 11, 0.5); /* Faint color in the middle of animation */
+  }
+  100% {
+    border-color: transparent; /* Back to no color */
+  }
+}
+
+
+.gallery-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 10px;
+  transition: transform 0.4s ease;
+}
+
+.gallery-item:hover .gallery-image {
+  transform: scale(1.1); /* Zoom effect on image hover */
+}
+
+/* Overlay effect */
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7); /* Dark semi-transparent overlay */
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.4s ease-in-out;
+  padding: 20px;
+  text-align: center;
+}
+
+.gallery-item:hover .overlay {
+  opacity: 1; /* Show the overlay on hover */
+}
+
+.overlay h2 {
+  font-size: 1.5rem;
+  margin-bottom: 10px;
+}
+
+.overlay p {
+  font-size: 1rem;
+  margin-top: 5px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .gallery {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .gallery-item {
+    width: 100%; /* Full width on smaller screens */
+  }
+  .projects-section p{
+    margin-bottom: 8%;
+  }
+}
