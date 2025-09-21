@@ -14,10 +14,10 @@ const Home = () => {
       </video>
 
           <div className="overlay-message">
-            <h1>Welcome to Agri Sustain</h1>
+            <h1>Welcome to Agri Connect</h1>
             <p>
-              At Agri Sustain, we are dedicated to supporting farmers through innovative solutions, sustainable practices, and access to critical resources. Whether you're looking for the latest government schemes, updates on crop prices, or easy access to agricultural tools, our platform is here to help you grow and thrive.
-            </p>
+              At Agri Connect, we are dedicated to empower farmers by providing them with a digital platform to transform their crops into value-added products, connect directly with global buyers, and embrace technology for sustainable growth.
+              </p>
           </div>
         </div>
       </section>
@@ -25,10 +25,10 @@ const Home = () => {
       {/* Additional section for more information */}
       <section className="info-section">
         <div className="info-container">
-          <h1>OUR MISSION</h1>
+          <h1>OUR VISION</h1>
           <div className='info-p' >
           <p>
-            Our mission is to foster sustainable agricultural practices that help farmers achieve long-term productivity and prosperity. Through cutting-edge technology, data-driven insights, and community support, we aim to empower farmers with the tools they need to succeed in today’s dynamic environment.
+            Our vision is to create a sustainable digital ecosystem that empowers farmers to transform their crops into high-value products, connect with global buyers, and leverage technology for growth, innovation, and prosperity.
           </p>
           <ImageSlider/>
         </div>

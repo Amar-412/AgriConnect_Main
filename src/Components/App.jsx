@@ -4,12 +4,31 @@ import Home from './Home';
 import Gov from './govschemes';
 import Crops from './crops';
 import Contact from './Contact';
-import './App.css'; // Import external CSS
+import './App.css';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { DataProvider } from './context/DataContext';
+import Login from './auth/Login';
+import Register from './auth/Register';
+import AdminDashboard from './dashboards/AdminDashboard';
+import FarmerDashboard from './dashboards/FarmerDashboard';
+import BuyerDashboard from './dashboards/BuyerDashboard';
 
-const App = () => {
+const DashboardSwitch = () => {
+  const { user } = useAuth();
+  if (!user) return null;
+  if (user.role === 'admin') return <AdminDashboard />;
+  if (user.role === 'farmer') return <FarmerDashboard />;
+  return <BuyerDashboard />;
+};
+
+const AppShell = () => {
+  const { user } = useAuth();
   const [activePage, setActivePage] = useState('Home');
 
   const renderPage = () => {
+    if (activePage === 'Login') return <Login onSuccess={() => setActivePage('Dashboard')} onSwitchToRegister={() => setActivePage('Register')} />;
+    if (activePage === 'Register') return <Register onSuccess={() => setActivePage('Login')} onSwitchToLogin={() => setActivePage('Login')} />;
+    if (activePage === 'Dashboard') return <DashboardSwitch />;
     switch (activePage) {
       case 'Home':
         return <Home />;
@@ -27,8 +46,18 @@ const App = () => {
   return (
     <div style={{ backgroundColor: 'black', color: 'white', minHeight: '100vh' }}>
       <Navbar setActivePage={setActivePage} />
-      {renderPage()}
+      {user && activePage === 'Login' ? <DashboardSwitch /> : renderPage()}
     </div>
+  );
+};
+
+const App = () => {
+  return (
+    <AuthProvider>
+      <DataProvider>
+        <AppShell />
+      </DataProvider>
+    </AuthProvider>
   );
 };
 
