@@ -1,22 +1,59 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { validateGmailEmail, validateStrongPassword } from '../../utils/validation';
 
 const AdminDashboard = () => {
   const { allUsers, createUser, updateUser, deleteUser } = useAuth();
   const { orders, updateOrderStatus } = useData();
   const [draftUser, setDraftUser] = useState({ name: '', email: '', password: '', role: 'buyer' });
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [allTransactions, setAllTransactions] = useState([]);
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  useEffect(() => {
+    const loadTransactions = () => {
+      const allTx = JSON.parse(localStorage.getItem('transactions') || '[]');
+      setAllTransactions(allTx.reverse()); // Reverse to show newest first
+    };
+    
+    loadTransactions();
+    
+    // Refresh transactions periodically to catch new ones
+    const interval = setInterval(loadTransactions, 2000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   const handleCreateUser = (e) => {
-              e.preventDefault();
-              try {
-                createUser(draftUser);
-                setDraftUser({ name: '', email: '', password: '', role: 'buyer' });
+    e.preventDefault();
+    setEmailError('');
+    setPasswordError('');
+
+    // Validate email
+    const emailValidationError = validateGmailEmail(draftUser.email);
+    if (emailValidationError) {
+      setEmailError(emailValidationError);
+      return;
+    }
+
+    // Validate password
+    const passwordValidationError = validateStrongPassword(draftUser.password);
+    if (passwordValidationError) {
+      setPasswordError(passwordValidationError);
+      return;
+    }
+
+    try {
+      createUser(draftUser);
+      setDraftUser({ name: '', email: '', password: '', role: 'buyer' });
       setShowCreateForm(false);
-              } catch (err) {
-                alert(err.message);
-              }
+      setEmailError('');
+      setPasswordError('');
+    } catch (err) {
+      alert(err.message);
+    }
   };
 
   const getStatusStyle = (status) => {
@@ -127,51 +164,61 @@ const AdminDashboard = () => {
                   minWidth: '200px'
                 }}
               />
-              <input 
-                placeholder="Email" 
-                type="email"
-                value={draftUser.email} 
-                onChange={(e) => setDraftUser({ ...draftUser, email: e.target.value })}
-                required
-                style={{
-                  flex: 1,
-                  padding: '10px 12px',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white',
-                  fontSize: '14px',
-                  minWidth: '200px'
-                }}
-              />
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <input 
+                  placeholder="Email" 
+                  type="email"
+                  value={draftUser.email} 
+                  onChange={(e) => {
+                    setDraftUser({ ...draftUser, email: e.target.value });
+                    setEmailError('');
+                  }}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    borderRadius: '6px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    color: 'white',
+                    fontSize: '14px'
+                  }}
+                />
+                {emailError && <div style={{ color: 'tomato', marginTop: 4, fontSize: '14px' }}>{emailError}</div>}
+              </div>
             </div>
             <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
-              <input 
-                placeholder="Password" 
-                type="password" 
-                value={draftUser.password} 
-                onChange={(e) => setDraftUser({ ...draftUser, password: e.target.value })}
-                required
-                style={{
-                  flex: 1,
-                  padding: '10px 12px',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white',
-                  fontSize: '14px',
-                  minWidth: '200px'
-                }}
-              />
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <input 
+                  placeholder="Password" 
+                  type="password" 
+                  value={draftUser.password} 
+                  onChange={(e) => {
+                    setDraftUser({ ...draftUser, password: e.target.value });
+                    setPasswordError('');
+                  }}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    borderRadius: '6px',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    color: 'white',
+                    fontSize: '14px'
+                  }}
+                />
+                {passwordError && <div style={{ color: 'tomato', marginTop: 4, fontSize: '14px' }}>{passwordError}</div>}
+              </div>
               <select 
                 value={draftUser.role} 
                 onChange={(e) => setDraftUser({ ...draftUser, role: e.target.value })}
                 style={{
                   flex: 1,
                   padding: '10px 12px',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  border: '1px solid rgba(255,255,255, 0.2)',
                   borderRadius: '6px',
-                  background: 'rgba(255, 255, 255, 0.1)',
+                  background: 'rgba(0, 0, 0, 0.8)',
                   color: 'white',
                   fontSize: '14px',
                   minWidth: '200px'
@@ -274,6 +321,15 @@ const AdminDashboard = () => {
                   fontSize: '14px',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px'
+                }}>Login Type</th>
+                <th style={{ 
+                  color: '#5eed3a', 
+                  padding: '16px 12px', 
+                  textAlign: 'left', 
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
                 }}>Actions</th>
               </tr>
             </thead>
@@ -304,15 +360,32 @@ const AdminDashboard = () => {
                           user.role === 'farmer' ? { background: '#4ecdc4', color: 'white' } :
                           { background: '#45b7d1', color: 'white' })
                     }}>
-                      {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                      {user.role ? (user.role.charAt(0).toUpperCase() + user.role.slice(1).toLowerCase()) : 'Buyer'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '4px 12px',
+                      borderRadius: '20px',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      background: user.loginType === 'google' ? '#4285f4' : '#666',
+                      color: 'white'
+                    }}>
+                      {user.loginType === 'google' ? 'Google' : 'Manual'}
                     </span>
                   </td>
                   <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
                     <button 
-                      onClick={() => updateUser(user.id, { 
-                        role: user.role === 'buyer' ? 'farmer' : 
-                              user.role === 'farmer' ? 'buyer' : 'admin' 
-                      })}
+                      onClick={() => {
+                        const currentRole = (user.role || '').toLowerCase();
+                        const newRole = currentRole === 'buyer' ? 'farmer' : 
+                                      currentRole === 'farmer' ? 'buyer' : 'admin';
+                        updateUser(user.id || user.userId || user.email, { role: newRole });
+                      }}
                       style={{
                         background: '#ffa500',
                         color: 'white',
@@ -337,7 +410,7 @@ const AdminDashboard = () => {
                       Toggle Role
                     </button>
                     <button 
-                      onClick={() => deleteUser(user.id)}
+                      onClick={() => deleteUser(user.id || user.userId || user.email)}
                       style={{
                         background: '#ff4444',
                         color: 'white',
@@ -412,7 +485,25 @@ const AdminDashboard = () => {
                   fontSize: '14px',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px'
-                }}>Order ID</th>
+                }}>Transaction ID</th>
+                <th style={{ 
+                  color: '#5eed3a', 
+                  padding: '16px 12px', 
+                  textAlign: 'left', 
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>Buyer Name</th>
+                <th style={{ 
+                  color: '#5eed3a', 
+                  padding: '16px 12px', 
+                  textAlign: 'left', 
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>Farmer Name</th>
                 <th style={{ 
                   color: '#5eed3a', 
                   padding: '16px 12px', 
@@ -430,7 +521,7 @@ const AdminDashboard = () => {
                   fontSize: '14px',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px'
-                }}>Quantity</th>
+                }}>Total</th>
                 <th style={{ 
                   color: '#5eed3a', 
                   padding: '16px 12px', 
@@ -448,91 +539,70 @@ const AdminDashboard = () => {
                   fontSize: '14px',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px'
-                }}>Actions</th>
+                }}>Date</th>
               </tr>
             </thead>
             <tbody>
-              {orders.map((order, index) => (
-                <tr key={order.id} style={{
-                  background: index % 2 === 0 ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.05)',
-                  transition: 'background 0.3s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(94, 237, 58, 0.1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = index % 2 === 0 ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.05)';
-                }}>
-                  <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>#{order.id}</td>
-                  <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>{order.productName}</td>
-                  <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>{order.quantity}</td>
-                  <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                    <span style={{
-                      display: 'inline-block',
-                      padding: '6px 12px',
-                      borderRadius: '20px',
-                      fontSize: '12px',
-                      fontWeight: 'bold',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      ...getStatusStyle(order.status)
-                    }}>
-                      {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                    </span>
-                  </td>
-                  <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                    <button 
-                      onClick={() => updateOrderStatus(order.id, 'approved')}
-                      style={{
-                        background: '#5eed3a',
-                        color: 'black',
-                        border: 'none',
-                        padding: '6px 12px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        marginRight: '8px',
-                        transition: 'all 0.3s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.target.style.background = '#4ddb2a';
-                        e.target.style.transform = 'translateY(-1px)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.background = '#5eed3a';
-                        e.target.style.transform = 'translateY(0)';
-                      }}
-                    >
-                      Approve
-                    </button>
-                    <button 
-                      onClick={() => updateOrderStatus(order.id, 'flagged')}
-                      style={{
-                        background: '#ff6b6b',
-                        color: 'white',
-                        border: 'none',
-                        padding: '6px 12px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.target.style.background = '#ff5252';
-                        e.target.style.transform = 'translateY(-1px)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.background = '#ff6b6b';
-                        e.target.style.transform = 'translateY(0)';
-                      }}
-                    >
-                      Flag
-                    </button>
+              {allTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: 'rgba(255, 255, 255, 0.7)' }}>
+                    No transactions yet.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                allTransactions.map((tx, index) => (
+                  <tr key={tx.transactionId} style={{
+                    background: index % 2 === 0 ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.05)',
+                    transition: 'background 0.3s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(94, 237, 58, 0.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = index % 2 === 0 ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.05)';
+                  }}>
+                    <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                      {tx.transactionId}
+                    </td>
+                    <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                      {tx.buyerName || tx.buyerEmail || 'N/A'}
+                    </td>
+                    <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                      {tx.farmerName || tx.farmerEmail || 'N/A'}
+                    </td>
+                    <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                      {tx.items && tx.items.length > 0
+                        ? (tx.items.length === 1 
+                            ? tx.items[0].name || 'Unknown Product'
+                            : `Multiple items (${tx.items.length})`)
+                        : 'N/A'}
+                    </td>
+                    <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', color: '#5eed3a', fontWeight: '600' }}>
+                      {(() => {
+                        const total = tx.total || (tx.items && tx.items.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0)) || 0;
+                        return `₹${Number(total).toLocaleString('en-IN')}`;
+                      })()}
+                    </td>
+                    <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '6px 12px',
+                        borderRadius: '20px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        ...getStatusStyle(tx.status)
+                      }}>
+                        {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
+                      </span>
+                    </td>
+                    <td style={{ padding: '16px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                      {new Date(tx.date).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

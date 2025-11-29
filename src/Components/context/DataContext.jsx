@@ -50,14 +50,30 @@ export const DataProvider = ({ children }) => {
     writeJson(STORAGE_CART_KEY, cartByUserId);
   }, [cartByUserId]);
 
-  const addProduct = (product) => {
+  const addProduct = (product, farmerInfo) => {
+    // Ensure farmer info is included from logged-in user
+    const farmerId = farmerInfo?.userId || farmerInfo?.email || product.farmerId || product.ownerId || '';
+    const farmerEmail = farmerInfo?.email || product.farmerEmail || '';
+    const farmerName = farmerInfo?.name || product.farmerName || '';
+    
     setProducts((prev) => [
       ...prev,
       {
         ...product,
         id: Date.now().toString(),
+        name: product.name || '',
+        price: Number(product.price || 0),
+        quantity: Number(product.quantity || product.inventory || 0),
+        farmerId,
+        farmerEmail,
+        farmerName,
+        image: product.image || product.imageDataUrl || '',
         category: product.category || 'General',
         location: product.location || '',
+        // Keep for backward compatibility
+        ownerId: farmerId,
+        imageDataUrl: product.image || product.imageDataUrl || '',
+        inventory: Number(product.quantity || product.inventory || 0)
       },
     ]);
   };
@@ -114,19 +130,66 @@ export const DataProvider = ({ children }) => {
     ]);
   };
 
-  // Cart helpers
-  const addToCart = (userId, item) => {
+  // Cart helpers - optimized to store only productId + quantity to avoid QuotaExceededError
+  // All other data (name, price, image, farmer info) is looked up from products array
+  const addToCart = (userId, item, productInfo = null) => {
+    if (!userId || !item.productId) return;
+    
+    // Store only minimal data: productId and quantity
+    // This prevents QuotaExceededError from storing large base64 images
+    const cartItem = {
+      productId: item.productId,
+      quantity: Number(item.quantity || 1)
+    };
+    
     setCartByUserId((prev) => {
       const cart = prev[userId] || [];
       const existingIndex = cart.findIndex((c) => c.productId === item.productId);
       let nextCart;
       if (existingIndex >= 0) {
-        nextCart = cart.map((c, i) => (i === existingIndex ? { ...c, quantity: (c.quantity || 0) + (item.quantity || 1) } : c));
+        // Update quantity for existing item
+        nextCart = cart.map((c, i) => 
+          i === existingIndex 
+            ? { ...c, quantity: Number(c.quantity || 0) + Number(item.quantity || 1) } 
+            : c
+        );
       } else {
-        nextCart = [...cart, { ...item }];
+        // Add new item
+        nextCart = [...cart, cartItem];
       }
       return { ...prev, [userId]: nextCart };
     });
+  };
+  
+  // Helper to get full cart item with product details
+  const getCartItemWithDetails = (cartItem) => {
+    const product = products.find(p => p.id === cartItem.productId);
+    if (!product) {
+      return {
+        ...cartItem,
+        name: 'Unknown Product',
+        price: 0,
+        image: null,
+        farmerId: '',
+        farmerEmail: '',
+        farmerName: ''
+      };
+    }
+    
+    return {
+      productId: cartItem.productId,
+      quantity: Number(cartItem.quantity || 1),
+      name: product.name || '',
+      price: Number(product.price || 0),
+      image: product.image || product.imageDataUrl || '',
+      farmerId: product.farmerId || product.ownerId || '',
+      farmerEmail: product.farmerEmail || '',
+      farmerName: product.farmerName || '',
+      // Backward compatibility
+      productName: product.name || '',
+      productImage: product.image || product.imageDataUrl || '',
+      imageDataUrl: product.image || product.imageDataUrl || ''
+    };
   };
 
   const removeFromCart = (userId, productId) => {
@@ -165,6 +228,7 @@ export const DataProvider = ({ children }) => {
       removeFromCart,
       updateCartItemQuantity,
       clearCart,
+      getCartItemWithDetails, // Helper to get full cart item details
     }),
     [products, orders, reviews, messages, cartByUserId]
   );

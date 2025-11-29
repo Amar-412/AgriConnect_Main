@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import './App.css'; // Import the CSS file here
 import { useAuth } from './context/AuthContext';
 
-const Navbar = ({ setActivePage }) => {
+const Navbar = ({ onNavigate }) => {
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [location, setLocation] = useState(null);
@@ -70,25 +70,25 @@ const Navbar = ({ setActivePage }) => {
     <>
       <nav>
         <div className="navbar-brand">
-          <img src="images/logo.png" alt="Agri Sustain Logo" className="navbar-logo" onClick={() => setActivePage('Home')} style={{ cursor: 'pointer' }} />
-          <span onClick={() => setActivePage('Home')} style={{ cursor: 'pointer' }}>
+          <img src="images/logo.png" alt="Agri Sustain Logo" className="navbar-logo" onClick={() => onNavigate?.('home')} style={{ cursor: 'pointer' }} />
+          <span onClick={() => onNavigate?.('home')} style={{ cursor: 'pointer' }}>
             Agri Connect
           </span>
         </div>
         <ul className={`nav-links ${isMobileMenuOpen ? 'nav-active' : ''}`}>
-          <li><a href="#" onClick={() => setActivePage('Home')}>Home</a></li>
-          <li><a href="#" onClick={() => setActivePage('About')}>Scheme</a></li>
-          <li><a href="#" onClick={() => setActivePage('Projects')}>Crops</a></li>
-          <li><a href="#" onClick={() => setActivePage('Contact')}>Contact</a></li>
+          <li><a href="#" onClick={() => onNavigate?.('home')}>Home</a></li>
+          <li><a href="#" onClick={() => onNavigate?.('schemes')}>Scheme</a></li>
+          <li><a href="#" onClick={() => onNavigate?.('crops')}>Crops</a></li>
+          <li><a href="#" onClick={() => onNavigate?.('contact')}>Contact</a></li>
           <li>
             <a className='sos1' onClick={handleSOSClick} style={{ cursor: 'pointer' }}>
               <img className='sos' src="images/help.png" alt="Help" />
             </a>
           </li>
-          {!user && <li><a href="#" onClick={() => setActivePage('Login')}>Login</a></li>}
-          {!user && <li><a href="#" onClick={() => setActivePage('Register')}>Register</a></li>}
-          {user && <li><a href="#" onClick={() => setActivePage('Dashboard')}>Dashboard</a></li>}
-          {user && <li><a href="#" onClick={() => { logout(); setActivePage('Home'); }}>Logout</a></li>}
+          {!user && <li><a href="#" onClick={() => onNavigate?.('login')}>Login</a></li>}
+          {!user && <li><a href="#" onClick={() => onNavigate?.('register')}>Register</a></li>}
+          {user && <li><a href="#" onClick={() => onNavigate?.('dashboard')}>Dashboard</a></li>}
+          {user && <li><a href="#" onClick={() => { logout(); onNavigate?.('home'); }}>Logout</a></li>}
           {user && (
             <li style={{ marginLeft: '16px' }}>
               <div style={{
@@ -129,19 +129,19 @@ const Navbar = ({ setActivePage }) => {
         </div>
         {/* Mobile menu */}
         <ul className={`nav-links-mobile ${isMobileMenuOpen ? 'nav-active' : ''}`}>
-          <li><a className='nav-tag' href="#" onClick={() => { setActivePage('Home'); closeMobileMenu(); }}>Home</a></li>
-          <li><a className='nav-tag' href="#" onClick={() => { setActivePage('About'); closeMobileMenu(); }}>Scheme</a></li>
-          <li><a className='nav-tag' href="#" onClick={() => { setActivePage('Projects'); closeMobileMenu(); }}>Crops</a></li>
-          <li><a className='nav-tag' href="#" onClick={() => { setActivePage('Contact'); closeMobileMenu(); }}>Contact</a></li>
+          <li><a className='nav-tag' href="#" onClick={() => { onNavigate?.('home'); closeMobileMenu(); }}>Home</a></li>
+          <li><a className='nav-tag' href="#" onClick={() => { onNavigate?.('schemes'); closeMobileMenu(); }}>Scheme</a></li>
+          <li><a className='nav-tag' href="#" onClick={() => { onNavigate?.('crops'); closeMobileMenu(); }}>Crops</a></li>
+          <li><a className='nav-tag' href="#" onClick={() => { onNavigate?.('contact'); closeMobileMenu(); }}>Contact</a></li>
           <li>
             <a className='sos1' onClick={handleSOSClick} style={{ cursor: 'pointer' }}>
               <img className='sos' src="images/help.png" alt="Help" />
             </a>
           </li>
-          {!user && <li><a className='nav-tag' href="#" onClick={() => { setActivePage('Login'); closeMobileMenu(); }}>Login</a></li>}
-          {!user && <li><a className='nav-tag' href="#" onClick={() => { setActivePage('Register'); closeMobileMenu(); }}>Register</a></li>}
-          {user && <li><a className='nav-tag' href="#" onClick={() => { setActivePage('Dashboard'); closeMobileMenu(); }}>Dashboard</a></li>}
-          {user && <li><a className='nav-tag' href="#" onClick={() => { logout(); setActivePage('Home'); closeMobileMenu(); }}>Logout</a></li>}
+          {!user && <li><a className='nav-tag' href="#" onClick={() => { onNavigate?.('login'); closeMobileMenu(); }}>Login</a></li>}
+          {!user && <li><a className='nav-tag' href="#" onClick={() => { onNavigate?.('register'); closeMobileMenu(); }}>Register</a></li>}
+          {user && <li><a className='nav-tag' href="#" onClick={() => { onNavigate?.('dashboard'); closeMobileMenu(); }}>Dashboard</a></li>}
+          {user && <li><a className='nav-tag' href="#" onClick={() => { logout(); onNavigate?.('home'); closeMobileMenu(); }}>Logout</a></li>}
           {user && (
             <li style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '16px' }}>
               <div style={{

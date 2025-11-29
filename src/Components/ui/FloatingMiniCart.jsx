@@ -1,25 +1,47 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 
 const FloatingMiniCart = ({ onCheckout }) => {
   const { user } = useAuth();
-  const { cartByUserId, updateCartItemQuantity, removeFromCart, products } = useData();
+  const { cartByUserId, updateCartItemQuantity, removeFromCart, products, getCartItemWithDetails } = useData();
   const [open, setOpen] = useState(false);
-  const cart = (user && cartByUserId[user.id]) || [];
-  const subtotal = useMemo(() => cart.reduce((sum, i) => sum + Number(i.price || 0) * Number(i.quantity || 0), 0), [cart]);
   
-  // Get product details for cart items
+  const userId = user ? (user.id || user.userId || user.email) : null;
+  const userCart = userId ? (cartByUserId[userId] || cartByUserId[user.id] || []) : [];
+  
+  // Get full cart items with product details (optimized cart only stores productId + quantity)
   const cartWithProducts = useMemo(() => {
-    return cart.map(item => {
+    if (!userCart.length) return [];
+    
+    if (getCartItemWithDetails) {
+      return userCart.map(item => getCartItemWithDetails(item));
+    }
+    
+    // Fallback: lookup from products
+    return userCart.map(item => {
       const product = products.find(p => p.id === item.productId);
+      if (!product) {
+        return {
+          ...item,
+          productName: 'Unknown Product',
+          productImage: null,
+          price: 0
+        };
+      }
       return {
         ...item,
-        productImage: product?.imageDataUrl || null,
-        productName: product?.name || item.productName
+        productName: product.name || '',
+        productImage: product.image || product.imageDataUrl || null,
+        price: Number(product.price || 0)
       };
     });
-  }, [cart, products]);
+  }, [userCart, products, getCartItemWithDetails]);
+  
+  const subtotal = useMemo(() => 
+    cartWithProducts.reduce((sum, i) => sum + Number(i.price || 0) * Number(i.quantity || 0), 0), 
+    [cartWithProducts]
+  );
 
   return (
     <>
@@ -42,7 +64,7 @@ const FloatingMiniCart = ({ onCheckout }) => {
         }}
         aria-label="Open cart"
       >
-        🛒{cart.length}
+        🛒{userCart.length}
       </button>
       {open && (
         <div
@@ -61,7 +83,7 @@ const FloatingMiniCart = ({ onCheckout }) => {
           }}
         >
           <div style={{ fontWeight: 700, marginBottom: 8 }}>My Cart</div>
-          {cart.length === 0 ? (
+          {userCart.length === 0 ? (
             <div style={{ color: '#666', textAlign: 'center', padding: '20px 0' }}>Your cart is empty</div>
           ) : (
             <>
@@ -125,7 +147,7 @@ const FloatingMiniCart = ({ onCheckout }) => {
                         type="number"
                         min={1}
                         value={item.quantity}
-                        onChange={(e) => user && updateCartItemQuantity(user.id, item.productId, e.target.value)}
+                        onChange={(e) => user && updateCartItemQuantity(userId, item.productId, e.target.value)}
                         style={{ 
                           width: 50, 
                           padding: '4px 6px', 
@@ -136,7 +158,7 @@ const FloatingMiniCart = ({ onCheckout }) => {
                         }}
                       />
                       <button 
-                        onClick={() => user && removeFromCart(user.id, item.productId)} 
+                        onClick={() => user && removeFromCart(userId, item.productId)} 
                         style={{ 
                           padding: '4px 8px', 
                           fontSize: '11px',
@@ -168,8 +190,8 @@ const FloatingMiniCart = ({ onCheckout }) => {
                 <span>Subtotal</span>
                 <span>₹{subtotal.toLocaleString('en-IN')}</span>
               </div>
-              <button onClick={onCheckout} style={{ marginTop: 10, width: '100%', padding: '10px 12px', background: '#16a34a', color: '#fff', borderRadius: 8, border: 'none' }} disabled={!user || cart.length === 0}>
-                Checkout
+              <button onClick={onCheckout} style={{ marginTop: 10, width: '100%', padding: '10px 12px', background: '#16a34a', color: '#fff', borderRadius: 8, border: 'none' }} disabled={!user || userCart.length === 0}>
+                Go to Cart
               </button>
             </>
           )}

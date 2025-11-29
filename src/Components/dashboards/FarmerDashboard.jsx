@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 
@@ -8,14 +8,83 @@ const FarmerDashboard = () => {
   const [draft, setDraft] = useState({ name: '', description: '', price: '', inventory: '', imageDataUrl: '', category: 'General', location: '' });
   const [showMessages, setShowMessages] = useState(false);
   const [showOrders, setShowOrders] = useState(false);
-  const myOrders = useMemo(() => orders.filter((o) => products.find((p) => p.id === o.productId && p.ownerId === user?.id)), [orders, products, user]);
+  const [myOrders, setMyOrders] = useState([]);
 
-  const myProducts = products.filter((p) => p.ownerId === user?.id);
+  useEffect(() => {
+    if (user) {
+      const loadOrders = () => {
+        const allTx = JSON.parse(localStorage.getItem('transactions') || '[]');
+        const loggedInFarmer = user;
+        const farmerEmail = loggedInFarmer.email || loggedInFarmer.userId || '';
+        const farmerOrders = allTx.filter(t => t.farmerEmail === farmerEmail);
+        
+        // Transform transactions to match the order format expected by the UI
+        // If transaction has multiple items, show each item separately with its subtotal
+        // If single item, use transaction total
+        const transformedOrders = farmerOrders.flatMap(tx => {
+          const items = tx.items || [];
+          if (items.length === 0) return [];
+          
+          // If single item, use transaction total; otherwise calculate per-item subtotal
+          const useTransactionTotal = items.length === 1;
+          
+          return items.map(item => ({
+            id: tx.transactionId,
+            productId: item.productId,
+            productName: item.name || 'Unknown Product',
+            buyerName: tx.buyerName || tx.buyerEmail || 'Unknown Buyer',
+            quantity: Number(item.quantity || 0),
+            total: useTransactionTotal 
+              ? Number(tx.total || 0)
+              : Number(item.price || 0) * Number(item.quantity || 0),
+            status: (tx.status || 'Completed').toLowerCase(),
+            createdAt: new Date(tx.date || Date.now()).getTime(),
+            date: tx.date || new Date().toISOString()
+          }));
+        });
+        
+        setMyOrders(transformedOrders);
+      };
+      
+      loadOrders();
+      
+      // Refresh orders periodically when popup is open
+      if (showOrders) {
+        const interval = setInterval(loadOrders, 2000);
+        return () => clearInterval(interval);
+      }
+    }
+  }, [user, showOrders]);
+
+  const myProducts = products.filter((p) => 
+    p.ownerId === user?.id || 
+    p.ownerId === user?.userId || 
+    p.ownerId === user?.email ||
+    p.farmerId === user?.userId ||
+    p.farmerId === user?.email ||
+    p.farmerEmail === user?.email
+  );
 
   const handleAdd = (e) => {
     e.preventDefault();
     if (!user) return;
-    addProduct({ ...draft, ownerId: user.id, price: Number(draft.price || 0), inventory: Number(draft.inventory || 0) });
+    
+    const productData = {
+      ...draft,
+      ownerId: user.id || user.userId || user.email,
+      price: Number(draft.price || 0),
+      inventory: Number(draft.inventory || 0),
+      quantity: Number(draft.inventory || 0)
+    };
+    
+    // Pass farmer info for unified schema
+    const farmerInfo = {
+      userId: user.userId || user.email || user.id,
+      email: user.email,
+      name: user.name
+    };
+    
+    addProduct(productData, farmerInfo);
     setDraft({ name: '', description: '', price: '', inventory: '', imageDataUrl: '', category: 'General', location: '' });
   };
 
@@ -758,7 +827,14 @@ const FarmerDashboard = () => {
               overflowY: 'auto',
               paddingRight: '8px'
             }}>
-              {messages.filter((m) => m.toUserId === user?.id).length === 0 ? (
+              {messages.filter((m) => 
+                m.farmerId === user?.userId || 
+                m.farmerId === user?.email || 
+                m.farmerId === user?.id ||
+                m.toUserId === user?.id ||
+                m.toUserId === user?.userId ||
+                m.toUserId === user?.email
+              ).length === 0 ? (
                 <div style={{
                   textAlign: 'center',
                   padding: '40px',
@@ -777,7 +853,14 @@ const FarmerDashboard = () => {
                   gap: '16px'
                 }}>
                   {messages
-                    .filter((m) => m.toUserId === user?.id)
+                    .filter((m) => 
+                      m.farmerId === user?.userId || 
+                      m.farmerId === user?.email || 
+                      m.farmerId === user?.id ||
+                      m.toUserId === user?.id ||
+                      m.toUserId === user?.userId ||
+                      m.toUserId === user?.email
+                    )
                     .map((m) => (
                       <div key={m.id} style={{
                         background: 'rgba(255, 255, 255, 0.05)',
@@ -1009,11 +1092,11 @@ const FarmerDashboard = () => {
                     fontSize: '14px',
                     color: 'white'
                   }}>
-                    <div>Order ID</div>
-                    <div>Product Name</div>
                     <div>Buyer</div>
-                    <div>Quantity</div>
-                    <div>Status</div>
+                    <div>Product</div>
+                    <div>Qty</div>
+                    <div>Total</div>
+                    <div>Date</div>
                   </div>
                   {myOrders.map((o) => (
                     <div key={o.id} style={{
@@ -1032,11 +1115,11 @@ const FarmerDashboard = () => {
                       e.currentTarget.style.background = 'transparent';
                     }}>
                       <div style={{ 
-                        fontWeight: '600', 
-                        color: '#5eed3a',
-                        fontSize: '14px'
+                        color: 'rgba(255, 255, 255, 0.8)',
+                        fontSize: '14px',
+                        textAlign: 'center'
                       }}>
-                        #{o.id.slice(-6)}
+                        {o.buyerName || 'Anonymous'}
                       </div>
                       <div style={{ 
                         color: 'white',
@@ -1052,23 +1135,22 @@ const FarmerDashboard = () => {
                         fontSize: '14px',
                         textAlign: 'center'
                       }}>
-                        {o.buyerName || 'Anonymous'}
+                        {o.quantity}
+                      </div>
+                      <div style={{ 
+                        color: '#5eed3a',
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        textAlign: 'center'
+                      }}>
+                        ₹{Number(o.total || 0).toFixed(2)}
                       </div>
                       <div style={{ 
                         color: 'rgba(255, 255, 255, 0.8)',
                         fontSize: '14px',
                         textAlign: 'center'
                       }}>
-                        {o.quantity}
-                      </div>
-                      <div style={{ 
-                        color: o.status === 'placed' ? '#5eed3a' : o.status === 'shipped' ? '#2196F3' : '#ff6b6b',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        textAlign: 'center',
-                        textTransform: 'capitalize'
-                      }}>
-                        {o.status}
+                        {o.date ? new Date(o.date).toLocaleDateString() : 'N/A'}
                       </div>
                     </div>
                   ))}
