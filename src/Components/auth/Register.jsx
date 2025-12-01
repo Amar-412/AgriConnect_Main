@@ -63,17 +63,28 @@ const Register = ({ onSuccess, onSwitchToLogin }) => {
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 12 }}>
           <input placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
           <div>
-            <input placeholder="Email" value={email} onChange={(e) => {
-              setEmail(e.target.value);
-              setEmailError('');
-            }} />
+            <input
+              placeholder="Email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setEmailError('');
+              }}
+              style={{ width: '100%' }}
+            />
             {emailError && <div style={{ color: 'tomato', marginTop: 4, fontSize: '14px' }}>{emailError}</div>}
           </div>
           <div>
-            <input placeholder="Password" type="password" value={password} onChange={(e) => {
-              setPassword(e.target.value);
-              setPasswordError('');
-            }} />
+            <input
+              placeholder="Password"
+              type="password"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setPasswordError('');
+              }}
+              style={{ width: '100%' }}
+            />
             {passwordError && <div style={{ color: 'tomato', marginTop: 4, fontSize: '14px' }}>{passwordError}</div>}
           </div>
           <select value={role} onChange={(e) => setRole(e.target.value)}>

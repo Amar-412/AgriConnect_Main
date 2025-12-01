@@ -104,17 +104,30 @@ const Login = ({ onSuccess, onSwitchToRegister }) => {
         {error && <div style={{ color: 'tomato', marginBottom: 12, textAlign: 'center' }}>{error}</div>}
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 12 }}>
           <div>
-            <input placeholder="Email" value={email} onChange={(e) => {
-              setEmail(e.target.value);
-              setEmailError('');
-            }} />
+            <input
+              placeholder="Email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setEmailError('');
+              }}
+              style={{ width: '100%' }}
+            />
+
             {emailError && <div style={{ color: 'tomato', marginTop: 4, fontSize: '14px' }}>{emailError}</div>}
           </div>
           <div>
-            <input placeholder="Password" type="password" value={password} onChange={(e) => {
-              setPassword(e.target.value);
-              setPasswordError('');
-            }} />
+            <input
+              placeholder="Password"
+              type="password"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setPasswordError('');
+              }}
+              style={{ width: '100%' }}
+            />
+
             {passwordError && <div style={{ color: 'tomato', marginTop: 4, fontSize: '14px' }}>{passwordError}</div>}
           </div>
           <button type="submit">Sign in</button>
