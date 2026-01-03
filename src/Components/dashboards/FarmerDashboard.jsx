@@ -755,7 +755,7 @@ const FarmerDashboard = () => {
                     return null;
                   }
 
-                  const handleReply = (e) => {
+                  const handleReply = async (e) => {
                     e.preventDefault();
                     const replyKey = `${conv.productId}_${conv.buyerId}`;
                     const text = replyText[replyKey] || '';

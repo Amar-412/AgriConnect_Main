@@ -24,33 +24,32 @@ const Login = ({ onSuccess, onSwitchToRegister }) => {
     }
   }, [user, showRoleSelector, tempGoogleUser, onSuccess]);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setError('');
-    setEmailError('');
-    setPasswordError('');
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError('');
+  setEmailError('');
+  setPasswordError('');
 
-    // Validate email
-    const emailValidationError = validateGmailEmail(email);
-    if (emailValidationError) {
-      setEmailError(emailValidationError);
-      return;
-    }
+  const emailValidationError = validateGmailEmail(email);
+  if (emailValidationError) {
+    setEmailError(emailValidationError);
+    return;
+  }
 
-    // Validate password
-    const passwordValidationError = validateStrongPassword(password);
-    if (passwordValidationError) {
-      setPasswordError(passwordValidationError);
-      return;
-    }
+  const passwordValidationError = validateStrongPassword(password);
+  if (passwordValidationError) {
+    setPasswordError(passwordValidationError);
+    return;
+  }
 
-    try {
-      await login(email, password);
-      onSuccess?.();
-    } catch (err) {
-      setError(err.message || 'Login failed');
-    }
-  };
+  try {
+    await login(email, password);
+    onSuccess?.();
+  } catch (err) {
+    setError(err.message || 'Login failed');
+  }
+};
+
 
   const handleRoleSelected = (role) => {
     if (tempGoogleUser) {

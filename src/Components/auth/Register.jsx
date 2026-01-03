@@ -12,33 +12,32 @@ const Register = ({ onSuccess, onSwitchToLogin }) => {
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setError('');
-    setEmailError('');
-    setPasswordError('');
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError('');
+  setEmailError('');
+  setPasswordError('');
 
-    // Validate email
-    const emailValidationError = validateGmailEmail(email);
-    if (emailValidationError) {
-      setEmailError(emailValidationError);
-      return;
-    }
+  const emailValidationError = validateGmailEmail(email);
+  if (emailValidationError) {
+    setEmailError(emailValidationError);
+    return;
+  }
 
-    // Validate password
-    const passwordValidationError = validateStrongPassword(password);
-    if (passwordValidationError) {
-      setPasswordError(passwordValidationError);
-      return;
-    }
+  const passwordValidationError = validateStrongPassword(password);
+  if (passwordValidationError) {
+    setPasswordError(passwordValidationError);
+    return;
+  }
 
-    try {
-      await register(name, email, password, role);
-      onSuccess?.();
-    } catch (err) {
-      setError(err.message || 'Registration failed');
-    }
-  };
+  try {
+    await register(name, email, password, role);
+    onSuccess?.();
+  } catch (err) {
+    setError(err.message || 'Registration failed');
+  }
+};
+
 
   return (
     <div style={{
