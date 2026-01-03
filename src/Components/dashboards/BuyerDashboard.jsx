@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { orderService } from '../../services/orderService';
 import BuyerSearchBar from '../ui/BuyerSearchBar';
 import ProductGrid from '../ui/ProductGrid';
 import FloatingMiniCart from '../ui/FloatingMiniCart';
@@ -99,32 +100,96 @@ const BuyerDashboard = ({ onBuyNowSingleItem, onOpenCart }) => {
     setReviewProduct(product);
   };
 
-  const handleSubmitReview = (reviewData) => {
+  const handleSubmitReview = async (reviewData) => {
     if (!user) return;
-    addReview({
-      productId: reviewData.productId,
-      farmerId: reviewProduct.ownerId,
-      buyerId: user.id,
-      buyerName: user.name,
-      rating: reviewData.rating,
-      comment: reviewData.comment
-    });
-    setReviewProduct(null);
+    try {
+      await addReview({
+        productId: reviewData.productId,
+        farmerId: reviewProduct.ownerId || reviewProduct.farmerId,
+        buyerId: user.id || user.userId || user.email, // Backend-verified buyer ID
+        buyerName: user.name,
+        rating: reviewData.rating,
+        comment: reviewData.comment
+      });
+      setReviewProduct(null);
+    } catch (error) {
+      console.error('[BuyerDashboard] Error submitting review:', error);
+      // Display backend error message if available, otherwise generic message
+      const errorMessage = error.message || 'Failed to submit review. Please try again.';
+      alert(errorMessage);
+    }
   };
 
   useEffect(() => {
     if (showPurchases && user) {
-      const loadPurchases = () => {
-        const allTx = JSON.parse(localStorage.getItem('transactions') || '[]');
-        const userEmail = user.email || user.userId || '';
-        const myPurchases = allTx.filter(t => t.buyerEmail === userEmail);
-        setPurchases(myPurchases);
+      const loadPurchases = async () => {
+        try {
+          const buyerId = user.id || user.userId || user.email || '';
+          if (!buyerId) return;
+
+          // Fetch orders from backend API
+          const buyerOrders = await orderService.getBuyerOrders(buyerId);
+          
+          // Transform backend orders to match UI format
+          // Backend returns orders with order items
+          const transformedPurchases = (buyerOrders || []).map(order => {
+            const orderItems = order.orderItems || order.items || [];
+            const orderDate = order.orderDate || order.createdAt || new Date().toISOString();
+            
+            // If single item, use order total; otherwise show per-item
+            if (orderItems.length === 1) {
+              return {
+                transactionId: order.id || order.orderId || '',
+                invoiceId: order.id || order.orderId || '',
+                buyerId: order.buyer?.id || order.buyerId || buyerId,
+                buyerEmail: user.email || '',
+                buyerName: user.name || '',
+                farmerId: orderItems[0]?.farmer?.id || orderItems[0]?.farmerId || '',
+                farmerEmail: orderItems[0]?.farmer?.email || orderItems[0]?.farmerEmail || '',
+                farmerName: orderItems[0]?.farmer?.name || orderItems[0]?.farmerName || '',
+                items: [{
+                  productId: orderItems[0]?.product?.id || orderItems[0]?.productId || '',
+                  name: orderItems[0]?.product?.name || 'Unknown Product',
+                  price: Number(orderItems[0]?.priceAtPurchase || orderItems[0]?.price || 0),
+                  quantity: Number(orderItems[0]?.quantity || 0),
+                }],
+                total: Number(order.totalAmount || order.total || 0),
+                status: order.orderStatus || 'PLACED',
+                date: orderDate,
+              };
+            } else {
+              // Multiple items - return order with all items
+              return {
+                transactionId: order.id || order.orderId || '',
+                invoiceId: order.id || order.orderId || '',
+                buyerId: order.buyer?.id || order.buyerId || buyerId,
+                buyerEmail: user.email || '',
+                buyerName: user.name || '',
+                items: orderItems.map(item => ({
+                  productId: item?.product?.id || item?.productId || '',
+                  name: item?.product?.name || 'Unknown Product',
+                  price: Number(item?.priceAtPurchase || item?.price || 0),
+                  quantity: Number(item?.quantity || 0),
+                })),
+                total: Number(order.totalAmount || order.total || 0),
+                status: order.orderStatus || 'PLACED',
+                date: orderDate,
+              };
+            }
+          });
+          
+          setPurchases(transformedPurchases);
+        } catch (error) {
+          console.error('[BuyerDashboard] Error loading purchases:', error);
+          // Fallback to empty array on error
+          setPurchases([]);
+        }
       };
       
       loadPurchases();
       
       // Refresh purchases periodically when popup is open
-      const interval = setInterval(loadPurchases, 2000);
+      const interval = setInterval(loadPurchases, 3000);
       return () => clearInterval(interval);
     }
   }, [showPurchases, user]);
@@ -203,8 +268,13 @@ const BuyerDashboard = ({ onBuyNowSingleItem, onOpenCart }) => {
           reviews={reviews}
           messages={messages}
           onClose={() => setPopupProduct(null)}
-          onSendMessage={(messageData) => {
-            sendMessage(messageData);
+          onSendMessage={async (messageData) => {
+            try {
+              await sendMessage(messageData);
+            } catch (error) {
+              console.error('[BuyerDashboard] Error sending message:', error);
+              alert('Failed to send message. Please try again.');
+            }
           }}
         />
       )}
@@ -304,6 +374,15 @@ const BuyerDashboard = ({ onBuyNowSingleItem, onOpenCart }) => {
                     }}>
                       Date
                     </th>
+                    <th style={{ 
+                      color: '#5eed3a', 
+                      padding: '12px', 
+                      textAlign: 'left', 
+                      fontWeight: 'bold',
+                      fontSize: '14px'
+                    }}>
+                      Status / Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -311,6 +390,17 @@ const BuyerDashboard = ({ onBuyNowSingleItem, onOpenCart }) => {
                     // Flatten transactions to show each item separately
                     const items = tx.items || [];
                     if (items.length === 0) {
+                      const currentStatus = (tx.status || 'PLACED').toUpperCase();
+                      const getStatusColor = (status) => {
+                        const s = status.toUpperCase();
+                        if (s === 'PLACED') return '#ffa500';
+                        if (s === 'ACCEPTED') return '#2196f3';
+                        if (s === 'SHIPPED') return '#9c27b0';
+                        if (s === 'COMPLETED') return '#5eed3a';
+                        if (s === 'CANCELLED') return '#f44336';
+                        return 'rgba(255, 255, 255, 0.8)';
+                      };
+                      
                       return [(
                         <tr key={tx.transactionId} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
                           <td style={{ padding: '12px', color: 'white' }}>N/A</td>
@@ -321,6 +411,15 @@ const BuyerDashboard = ({ onBuyNowSingleItem, onOpenCart }) => {
                           <td style={{ padding: '12px', color: 'rgba(255, 255, 255, 0.8)' }}>
                             {tx.date ? new Date(tx.date).toLocaleDateString() : 'N/A'}
                           </td>
+                          <td style={{ padding: '12px' }}>
+                            <div style={{
+                              color: getStatusColor(currentStatus),
+                              fontSize: '12px',
+                              fontWeight: '600'
+                            }}>
+                              {currentStatus}
+                            </div>
+                          </td>
                         </tr>
                       )];
                     }
@@ -328,30 +427,139 @@ const BuyerDashboard = ({ onBuyNowSingleItem, onOpenCart }) => {
                     // If single item, show transaction total; otherwise show per-item subtotal
                     const useTransactionTotal = items.length === 1;
                     
-                    return items.map((item, idx) => (
-                      <tr
-                        key={`${tx.transactionId}-${idx}`}
-                        style={{
-                          borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
-                        }}
-                      >
-                        <td style={{ padding: '12px', color: 'white' }}>
-                          {item.name || 'Unknown Product'}
-                        </td>
-                        <td style={{ padding: '12px', color: 'rgba(255, 255, 255, 0.8)' }}>
-                          {Number(item.quantity || 0)}
-                        </td>
-                        <td style={{ padding: '12px', color: '#5eed3a', fontWeight: '600' }}>
-                          ₹{useTransactionTotal 
-                            ? Number(tx.total || 0).toLocaleString('en-IN')
-                            : (Number(item.price || 0) * Number(item.quantity || 0)).toLocaleString('en-IN')
+                    return items.map((item, idx) => {
+                      const orderId = tx.transactionId || tx.orderId || '';
+                      const currentStatus = (tx.status || 'PLACED').toUpperCase();
+                      const canCancel = currentStatus === 'PLACED'; // Can only cancel if not yet shipped/completed
+                      
+                      const handleCancel = async () => {
+                        if (!orderId) return;
+                        if (!window.confirm('Are you sure you want to cancel this order?')) return;
+                        
+                        try {
+                          await orderService.cancelOrder(orderId);
+                          // Refresh purchases after cancellation
+                          const buyerId = user.id || user.userId || user.email;
+                          if (buyerId) {
+                            const buyerOrders = await orderService.getBuyerOrders(buyerId);
+                            const transformed = (buyerOrders || []).map(order => {
+                              const orderItems = order.orderItems || order.items || [];
+                              const orderDate = order.orderDate || order.createdAt || new Date().toISOString();
+                              
+                              if (orderItems.length === 1) {
+                                return {
+                                  transactionId: order.id || order.orderId || '',
+                                  invoiceId: order.id || order.orderId || '',
+                                  buyerId: order.buyer?.id || order.buyerId || buyerId,
+                                  buyerEmail: user.email || '',
+                                  buyerName: user.name || '',
+                                  farmerId: orderItems[0]?.farmer?.id || orderItems[0]?.farmerId || '',
+                                  farmerEmail: orderItems[0]?.farmer?.email || orderItems[0]?.farmerEmail || '',
+                                  farmerName: orderItems[0]?.farmer?.name || orderItems[0]?.farmerName || '',
+                                  items: [{
+                                    productId: orderItems[0]?.product?.id || orderItems[0]?.productId || '',
+                                    name: orderItems[0]?.product?.name || 'Unknown Product',
+                                    price: Number(orderItems[0]?.priceAtPurchase || orderItems[0]?.price || 0),
+                                    quantity: Number(orderItems[0]?.quantity || 0),
+                                  }],
+                                  total: Number(order.totalAmount || order.total || 0),
+                                  status: order.orderStatus || 'PLACED',
+                                  date: orderDate,
+                                };
+                              } else {
+                                return {
+                                  transactionId: order.id || order.orderId || '',
+                                  invoiceId: order.id || order.orderId || '',
+                                  buyerId: order.buyer?.id || order.buyerId || buyerId,
+                                  buyerEmail: user.email || '',
+                                  buyerName: user.name || '',
+                                  items: orderItems.map(item => ({
+                                    productId: item?.product?.id || item?.productId || '',
+                                    name: item?.product?.name || 'Unknown Product',
+                                    price: Number(item?.priceAtPurchase || item?.price || 0),
+                                    quantity: Number(item?.quantity || 0),
+                                  })),
+                                  total: Number(order.totalAmount || order.total || 0),
+                                  status: order.orderStatus || 'PLACED',
+                                  date: orderDate,
+                                };
+                              }
+                            });
+                            setPurchases(transformed);
                           }
-                        </td>
-                        <td style={{ padding: '12px', color: 'rgba(255, 255, 255, 0.8)' }}>
-                          {tx.date ? new Date(tx.date).toLocaleDateString() : 'N/A'}
-                        </td>
-                      </tr>
-                    ));
+                        } catch (error) {
+                          console.error('[BuyerDashboard] Error cancelling order:', error);
+                          alert(error.message || 'Failed to cancel order. Please try again.');
+                        }
+                      };
+                      
+                      const getStatusColor = (status) => {
+                        const s = status.toUpperCase();
+                        if (s === 'PLACED') return '#ffa500';
+                        if (s === 'ACCEPTED') return '#2196f3';
+                        if (s === 'SHIPPED') return '#9c27b0';
+                        if (s === 'COMPLETED') return '#5eed3a';
+                        if (s === 'CANCELLED') return '#f44336';
+                        return 'rgba(255, 255, 255, 0.8)';
+                      };
+                      
+                      return (
+                        <tr
+                          key={`${tx.transactionId}-${idx}`}
+                          style={{
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+                          }}
+                        >
+                          <td style={{ padding: '12px', color: 'white' }}>
+                            {item.name || 'Unknown Product'}
+                          </td>
+                          <td style={{ padding: '12px', color: 'rgba(255, 255, 255, 0.8)' }}>
+                            {Number(item.quantity || 0)}
+                          </td>
+                          <td style={{ padding: '12px', color: '#5eed3a', fontWeight: '600' }}>
+                            ₹{useTransactionTotal 
+                              ? Number(tx.total || 0).toLocaleString('en-IN')
+                              : (Number(item.price || 0) * Number(item.quantity || 0)).toLocaleString('en-IN')
+                            }
+                          </td>
+                          <td style={{ padding: '12px', color: 'rgba(255, 255, 255, 0.8)' }}>
+                            {tx.date ? new Date(tx.date).toLocaleDateString() : 'N/A'}
+                          </td>
+                          <td style={{ padding: '12px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                              <div style={{
+                                color: getStatusColor(currentStatus),
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                marginBottom: '4px'
+                              }}>
+                                {currentStatus}
+                              </div>
+                              {canCancel && (
+                                <button
+                                  onClick={handleCancel}
+                                  style={{
+                                    padding: '4px 8px',
+                                    background: '#f44336',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.2s ease'
+                                  }}
+                                  onMouseEnter={(e) => e.target.style.background = '#d32f2f'}
+                                  onMouseLeave={(e) => e.target.style.background = '#f44336'}
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    });
                   })}
                 </tbody>
               </table>

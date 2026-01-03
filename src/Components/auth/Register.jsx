@@ -33,7 +33,7 @@ const Register = ({ onSuccess, onSwitchToLogin }) => {
     }
 
     try {
-      register(name, email, password, role);
+      await register(name, email, password, role);
       onSuccess?.();
     } catch (err) {
       setError(err.message || 'Registration failed');

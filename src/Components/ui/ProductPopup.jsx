@@ -8,21 +8,22 @@ const ProductPopup = ({ product, user, reviews, messages, onClose, onSendMessage
   // Filter reviews for this product
   const productReviews = reviews.filter((r) => r.productId === product.id);
 
-  // Filter messages for this product, buyer, and farmer
+  // Filter messages for this product - only show conversation between logged-in user and the other party
   const productMessages = messages.filter((m) => {
-    const matchesProduct = m.productId === product.id;
-    if (!user) return false;
+    if (!user || m.productId !== product.id) return false;
     
-    const userId = user.userId || user.email || user.id;
-    const farmerId = product.farmerId || product.ownerId || '';
+    const userId = user.id || user.userId || user.email; // Backend id is primary
+    const otherPartyId = product.farmerId || product.ownerId || ''; // For buyer, other party is farmer
     
-    // Show messages where user is buyer or farmer for this product
-    return matchesProduct && (
-      m.buyerId === userId || 
-      m.farmerId === userId ||
-      m.fromUserId === userId ||
-      m.toUserId === userId
-    );
+    // Backend provides senderId and receiverId - use these as source of truth
+    const senderId = m.senderId || m.fromUserId || '';
+    const receiverId = m.receiverId || m.toUserId || '';
+    
+    // Show messages where:
+    // (logged-in user is sender AND other party is receiver) OR
+    // (other party is sender AND logged-in user is receiver)
+    return (senderId === userId && receiverId === otherPartyId) ||
+           (senderId === otherPartyId && receiverId === userId);
   }).sort((a, b) => (a.timestamp || a.createdAt || 0) - (b.timestamp || b.createdAt || 0));
 
   // Scroll to bottom when messages change
@@ -32,33 +33,46 @@ const ProductPopup = ({ product, user, reviews, messages, onClose, onSendMessage
     }
   }, [productMessages, activeTab]);
 
-  const handleSendMessage = (e) => {
+  const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!messageText.trim() || !user) return;
 
-    const userId = user.userId || user.email || user.id;
-    const farmerId = product.farmerId || product.ownerId || '';
-    const farmerName = product.farmerName || product.ownerName || 'Unknown';
+    const userId = user.id || user.userId || user.email; // Backend id is primary
+    const receiverId = product.farmerId || product.ownerId || '';
+    const receiverName = product.farmerName || product.ownerName || 'Unknown';
 
-    onSendMessage({
-      messageId: Date.now().toString(),
-      buyerId: userId,
-      buyerName: user.name,
-      farmerId: farmerId,
-      farmerName: farmerName,
-      productId: product.id,
-      productName: product.name,
-      content: messageText.trim(),
-      timestamp: Date.now(),
-      // Backward compatibility
-      fromUserId: userId,
-      fromUserName: user.name,
-      toUserId: farmerId,
-      body: messageText.trim(),
-      senderRole: 'buyer'
-    });
-
-    setMessageText('');
+    try {
+      await onSendMessage({
+        // Explicit sender/receiver identity - backend uses these as source of truth
+        senderId: userId,
+        senderName: user.name,
+        receiverId: receiverId,
+        receiverName: receiverName,
+        senderRole: 'buyer',
+        
+        // Message content
+        productId: product.id,
+        productName: product.name,
+        content: messageText.trim(),
+        timestamp: Date.now(),
+        
+        // Backward compatibility fields
+        messageId: Date.now().toString(),
+        buyerId: userId,
+        buyerName: user.name,
+        farmerId: receiverId,
+        farmerName: receiverName,
+        fromUserId: userId,
+        fromUserName: user.name,
+        toUserId: receiverId,
+        toUserName: receiverName,
+        body: messageText.trim(),
+      });
+      setMessageText('');
+    } catch (error) {
+      console.error('[ProductPopup] Error sending message:', error);
+      // Don't clear message text on error so user can retry
+    }
   };
 
   return (
@@ -265,12 +279,16 @@ const ProductPopup = ({ product, user, reviews, messages, onClose, onSendMessage
               ) : (
                 <>
                   {productMessages.map((msg) => {
-                    const userId = user?.userId || user?.email || user?.id;
-                    // Check if message was sent by current user (buyer)
-                    // Message is from buyer if: senderRole is 'buyer' OR fromUserId matches current user
-                    const isSentByCurrentUser = msg.senderRole === 'buyer' || 
-                                                msg.fromUserId === userId || 
-                                                (msg.buyerId === userId && msg.senderRole !== 'farmer');
+                    const userId = user?.id || user?.userId || user?.email; // Backend id is primary
+                    
+                    // Backend provides senderId - use it as single source of truth
+                    const senderId = msg.senderId || msg.fromUserId || '';
+                    const isSentByCurrentUser = senderId === userId;
+                    
+                    // Get sender name from backend data
+                    const senderName = isSentByCurrentUser 
+                      ? 'You' 
+                      : (msg.senderName || msg.fromUserName || msg.farmerName || msg.buyerName || 'Unknown');
                     
                     return (
                       <div
@@ -295,7 +313,7 @@ const ProductPopup = ({ product, user, reviews, messages, onClose, onSendMessage
                             fontSize: '12px',
                             opacity: 0.8
                           }}>
-                            {isSentByCurrentUser ? 'You' : (msg.farmerName || product.farmerName || product.ownerName || 'Farmer')}
+                            {isSentByCurrentUser ? 'You' : senderName}
                           </div>
                           <div>{msg.content || msg.body}</div>
                           <div style={{

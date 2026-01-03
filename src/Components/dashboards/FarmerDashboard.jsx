@@ -1,73 +1,101 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { productService } from '../../services/productService';
+import { orderService } from '../../services/orderService';
 
 const FarmerDashboard = () => {
   const { user } = useAuth();
-  const { products, orders, messages, reviews, sendMessage, addProduct, updateProduct, deleteProduct } = useData();
+  const { products, orders, messages, reviews, sendMessage, addProduct, updateProduct, deleteProduct, refreshProducts } = useData();
   const [draft, setDraft] = useState({ name: '', description: '', price: '', inventory: '', imageDataUrl: '', category: 'General', location: '' });
   const [showMessages, setShowMessages] = useState(false);
   const [showOrders, setShowOrders] = useState(false);
   const [myOrders, setMyOrders] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [replyText, setReplyText] = useState({});
+  const [myProducts, setMyProducts] = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+
+  // Fetch farmer-specific products from backend
+  useEffect(() => {
+    const fetchMyProducts = async () => {
+      if (!user) {
+        setMyProducts([]);
+        setLoadingProducts(false);
+        return;
+      }
+
+      try {
+        setLoadingProducts(true);
+        const farmerId = user.id || user.userId || user.email; // Backend id is primary
+        const fetchedProducts = await productService.getProductsByFarmer(farmerId);
+        setMyProducts(fetchedProducts || []);
+      } catch (error) {
+        console.error('[FarmerDashboard] Error fetching farmer products:', error);
+        // Fallback to filtering from all products if API fails
+        const filtered = products.filter((p) => 
+          p.ownerId === user?.id || 
+          p.ownerId === user?.userId || 
+          p.ownerId === user?.email ||
+          p.farmerId === user?.userId ||
+          p.farmerId === user?.email ||
+          p.farmerEmail === user?.email
+        );
+        setMyProducts(filtered);
+      } finally {
+        setLoadingProducts(false);
+      }
+    };
+
+    fetchMyProducts();
+  }, [user, products]);
 
   useEffect(() => {
     if (user) {
-      const loadOrders = () => {
-        const allTx = JSON.parse(localStorage.getItem('transactions') || '[]');
-        const loggedInFarmer = user;
-        const farmerEmail = loggedInFarmer.email || loggedInFarmer.userId || '';
-        const farmerOrders = allTx.filter(t => t.farmerEmail === farmerEmail);
-        
-        // Transform transactions to match the order format expected by the UI
-        // If transaction has multiple items, show each item separately with its subtotal
-        // If single item, use transaction total
-        const transformedOrders = farmerOrders.flatMap(tx => {
-          const items = tx.items || [];
-          if (items.length === 0) return [];
+      const loadOrders = async () => {
+        try {
+          const farmerId = user.id || user.userId || user.email || '';
+          if (!farmerId) return;
+
+          // Fetch orders from backend API
+          const farmerOrderItems = await orderService.getFarmerOrders(farmerId);
           
-          // If single item, use transaction total; otherwise calculate per-item subtotal
-          const useTransactionTotal = items.length === 1;
-          
-          return items.map(item => ({
-            id: tx.transactionId,
-            productId: item.productId,
-            productName: item.name || 'Unknown Product',
-            buyerName: tx.buyerName || tx.buyerEmail || 'Unknown Buyer',
-            quantity: Number(item.quantity || 0),
-            total: useTransactionTotal 
-              ? Number(tx.total || 0)
-              : Number(item.price || 0) * Number(item.quantity || 0),
-            status: (tx.status || 'Completed').toLowerCase(),
-            createdAt: new Date(tx.date || Date.now()).getTime(),
-            date: tx.date || new Date().toISOString()
+          // Transform backend order items to match UI format
+          // Backend returns order items with order, product, buyer, farmer info
+          const transformedOrders = (farmerOrderItems || []).map(orderItem => ({
+            id: orderItem.id || orderItem.orderItemId || '',
+            orderId: orderItem.order?.id || orderItem.orderId || '',
+            productId: orderItem.product?.id || orderItem.productId || '',
+            productName: orderItem.product?.name || 'Unknown Product',
+            buyerName: orderItem.order?.buyer?.name || orderItem.buyerName || 'Unknown Buyer',
+            buyerId: orderItem.order?.buyer?.id || orderItem.buyerId || '',
+            quantity: Number(orderItem.quantity || 0),
+            total: Number(orderItem.priceAtPurchase || orderItem.price || 0) * Number(orderItem.quantity || 0),
+            status: (orderItem.order?.orderStatus || orderItem.status || 'PLACED').toLowerCase(),
+            createdAt: new Date(orderItem.order?.orderDate || orderItem.createdAt || Date.now()).getTime(),
+            date: orderItem.order?.orderDate || orderItem.createdAt || new Date().toISOString(),
+            priceAtPurchase: Number(orderItem.priceAtPurchase || orderItem.price || 0),
           }));
-        });
-        
-        setMyOrders(transformedOrders);
+          
+          setMyOrders(transformedOrders);
+        } catch (error) {
+          console.error('[FarmerDashboard] Error loading orders:', error);
+          // Fallback to empty array on error
+          setMyOrders([]);
+        }
       };
       
       loadOrders();
       
       // Refresh orders periodically when popup is open
       if (showOrders) {
-        const interval = setInterval(loadOrders, 2000);
+        const interval = setInterval(loadOrders, 3000);
         return () => clearInterval(interval);
       }
     }
   }, [user, showOrders]);
 
-  const myProducts = products.filter((p) => 
-    p.ownerId === user?.id || 
-    p.ownerId === user?.userId || 
-    p.ownerId === user?.email ||
-    p.farmerId === user?.userId ||
-    p.farmerId === user?.email ||
-    p.farmerEmail === user?.email
-  );
-
-  const handleAdd = (e) => {
+  const handleAdd = async (e) => {
     e.preventDefault();
     if (!user) return;
     
@@ -79,15 +107,28 @@ const FarmerDashboard = () => {
       quantity: Number(draft.inventory || 0)
     };
     
-    // Pass farmer info for unified schema
+    // Pass farmer info - use backend-provided id as source of truth
     const farmerInfo = {
-      userId: user.userId || user.email || user.id,
+      userId: user.id || user.userId || user.email, // Backend id is primary
       email: user.email,
       name: user.name
     };
     
-    addProduct(productData, farmerInfo);
-    setDraft({ name: '', description: '', price: '', inventory: '', imageDataUrl: '', category: 'General', location: '' });
+    try {
+      await addProduct(productData, farmerInfo);
+      setDraft({ name: '', description: '', price: '', inventory: '', imageDataUrl: '', category: 'General', location: '' });
+      // Refresh products list
+      if (refreshProducts) {
+        await refreshProducts();
+      }
+      // Also refresh my products
+      const farmerId = user.id || user.userId || user.email; // Backend id is primary
+      const fetchedProducts = await productService.getProductsByFarmer(farmerId);
+      setMyProducts(fetchedProducts || []);
+    } catch (error) {
+      console.error('[FarmerDashboard] Error adding product:', error);
+      alert('Failed to add product. Please try again.');
+    }
   };
 
   const handleImageChange = (e) => {
@@ -471,7 +512,22 @@ const FarmerDashboard = () => {
                 
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button 
-                    onClick={() => updateProduct(p.id, { inventory: p.inventory + 1 })}
+                    onClick={async () => {
+                      try {
+                        await updateProduct(p.id, { inventory: p.inventory + 1 });
+                        // Refresh products
+                        if (refreshProducts) {
+                          await refreshProducts();
+                        }
+                        const farmerId = user?.userId || user?.email || user?.id;
+                        if (farmerId) {
+                          const fetchedProducts = await productService.getProductsByFarmer(farmerId);
+                          setMyProducts(fetchedProducts || []);
+                        }
+                      } catch (error) {
+                        console.error('[FarmerDashboard] Error updating product:', error);
+                      }
+                    }}
                     style={{
                       flex: 1,
                       padding: '10px 16px',
@@ -496,7 +552,22 @@ const FarmerDashboard = () => {
                     +1 Stock
                   </button>
                   <button 
-                    onClick={() => deleteProduct(p.id)}
+                    onClick={async () => {
+                      try {
+                        await deleteProduct(p.id);
+                        // Refresh products
+                        if (refreshProducts) {
+                          await refreshProducts();
+                        }
+                        const farmerId = user?.userId || user?.email || user?.id;
+                        if (farmerId) {
+                          const fetchedProducts = await productService.getProductsByFarmer(farmerId);
+                          setMyProducts(fetchedProducts || []);
+                        }
+                      } catch (error) {
+                        console.error('[FarmerDashboard] Error deleting product:', error);
+                      }
+                    }}
                     style={{
                       flex: 1,
                       padding: '10px 16px',
@@ -529,222 +600,6 @@ const FarmerDashboard = () => {
 
 
 
-      {/* Product Reviews Section */}
-      <div style={{ marginBottom: '32px' }}>
-        <h3 style={{ 
-          fontSize: '2rem',
-          fontWeight: 'bold',
-          marginBottom: '20px',
-          textAlign: 'center',
-          background: 'linear-gradient(90deg, rgb(0, 110, 255) 0%, rgb(39, 250, 2) 25%, rgb(0, 217, 255) 50%, rgb(127, 255, 16) 75%, rgb(30, 255, 0) 100%)',
-          backgroundSize: '200% auto',
-          color: 'transparent',
-          backgroundClip: 'text',
-          animation: 'textAnimate 10s cubic-bezier(0.25, 0.1, 0.25, 1) infinite'
-        }}>
-          Product Reviews
-        </h3>
-        {myProducts.length === 0 ? (
-          <div style={{
-            textAlign: 'center',
-            padding: '40px',
-            color: 'white',
-            fontStyle: 'italic',
-            background: 'rgba(255, 255, 255, 0.05)',
-            borderRadius: '12px',
-            border: '1px solid rgba(255, 255, 255, 0.1)'
-          }}>
-            No products to show reviews for.
-          </div>
-        ) : (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '24px'
-          }}>
-            {myProducts.map((product) => {
-              const productReviews = reviews.filter((r) => r.productId === product.id);
-              const averageRating = productReviews.length > 0 
-                ? (productReviews.reduce((sum, r) => sum + r.rating, 0) / productReviews.length).toFixed(1)
-                : 0;
-              
-              return (
-                <div key={product.id} style={{ 
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  borderRadius: '16px',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  padding: '24px',
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-                  transition: 'transform 0.2s ease, box-shadow 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(0, 0, 0, 0.15)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)';
-                }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    marginBottom: '20px',
-                    gap: '16px'
-                  }}>
-                    {product.imageDataUrl ? (
-                      <img 
-                        alt={product.name} 
-                        src={product.imageDataUrl} 
-                        style={{ 
-                          width: '80px', 
-                          height: '80px', 
-                          objectFit: 'cover', 
-                          borderRadius: '12px',
-                          border: '2px solid #e1e5e9',
-                          boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)'
-                        }} 
-                      />
-                    ) : (
-                      <div style={{
-                        width: '80px',
-                        height: '80px',
-                        background: '#f5f5f5',
-                        borderRadius: '12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#666',
-                        fontSize: '14px',
-                        border: '2px solid #e1e5e9'
-                      }}>
-                        No Image
-                      </div>
-                    )}
-                    <div style={{ flex: 1 }}>
-                      <h4 style={{ 
-                        margin: '0 0 8px 0', 
-                        color: 'white',
-                        fontSize: '20px',
-                        fontWeight: '600'
-                      }}>
-                        {product.name}
-                      </h4>
-                      <div style={{ 
-                        color: 'rgba(255, 255, 255, 0.8)', 
-                        fontSize: '16px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px'
-                      }}>
-                        <span>
-                          {productReviews.length} review{productReviews.length !== 1 ? 's' : ''}
-                        </span>
-                        {averageRating > 0 && (
-                          <>
-                            <span style={{ color: '#ffd700', fontSize: '18px' }}>
-                              {'★'.repeat(Math.floor(averageRating))}
-                            </span>
-                            <span style={{ fontWeight: '600', color: 'white' }}>
-                              {averageRating}/5
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {productReviews.length === 0 ? (
-                    <div style={{
-                      textAlign: 'center',
-                      padding: '20px',
-                      color: 'white',
-                      fontStyle: 'italic',
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255, 255, 255, 0.1)'
-                    }}>
-                      No reviews yet for this product.
-                    </div>
-                  ) : (
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '16px'
-                    }}>
-                      {productReviews.map((review) => (
-                        <div key={review.id} style={{ 
-                          background: 'rgba(255, 255, 255, 0.05)',
-                          borderRadius: '12px',
-                          padding: '20px',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          transition: 'transform 0.2s ease'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = 'translateX(4px)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'translateX(0)';
-                        }}>
-                          <div style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center',
-                            marginBottom: '12px'
-                          }}>
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '12px'
-                            }}>
-                              <div style={{
-                                width: '36px',
-                                height: '36px',
-                                borderRadius: '50%',
-                                background: '#5eed3a',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: 'black',
-                                fontWeight: 'bold',
-                                fontSize: '14px'
-                              }}>
-                                {review.buyerName ? review.buyerName.charAt(0).toUpperCase() : 'A'}
-                              </div>
-                              <span style={{ 
-                                fontWeight: '600', 
-                                color: 'white',
-                                fontSize: '16px'
-                              }}>
-                                {review.buyerName || 'Anonymous'}
-                              </span>
-                            </div>
-                            <span style={{ 
-                              color: '#ffd700', 
-                              fontSize: '18px',
-                              fontWeight: '600'
-                            }}>
-                              {'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}
-                            </span>
-                          </div>
-                          <p style={{ 
-                            margin: 0, 
-                            color: 'white', 
-                            fontSize: '15px',
-                            lineHeight: '1.6',
-                            paddingLeft: '48px'
-                          }}>
-                            {review.comment}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
 
       {/* Floating Messages Dashboard */}
       {showMessages && (
@@ -830,11 +685,13 @@ const FarmerDashboard = () => {
               paddingRight: '8px'
             }}>
               {(() => {
-                const farmerId = user?.userId || user?.email || user?.id;
-                const farmerMessages = messages.filter((m) => 
-                  m.farmerId === farmerId || 
-                  m.toUserId === farmerId
-                );
+                const farmerId = user?.id || user?.userId || user?.email; // Backend id is primary
+                // Filter messages where farmer is either sender or receiver (backend provides senderId/receiverId)
+                const farmerMessages = messages.filter((m) => {
+                  const senderId = m.senderId || m.fromUserId || '';
+                  const receiverId = m.receiverId || m.toUserId || '';
+                  return senderId === farmerId || receiverId === farmerId;
+                });
 
                 if (farmerMessages.length === 0) {
                   return (
@@ -852,18 +709,27 @@ const FarmerDashboard = () => {
                   );
                 }
 
-                // Group messages by productId and buyerId
+                // Group messages by productId and the other party (buyer)
+                // Backend provides senderId/receiverId - use these to identify conversations
                 const conversations = {};
                 farmerMessages.forEach((m) => {
                   const productId = m.productId || 'unknown';
-                  const buyerId = m.buyerId || m.fromUserId || 'unknown';
+                  const senderId = m.senderId || m.fromUserId || '';
+                  const receiverId = m.receiverId || m.toUserId || '';
+                  
+                  // Determine the buyer (other party) - it's whoever is not the farmer
+                  const buyerId = senderId === farmerId ? receiverId : senderId;
+                  const buyerName = senderId === farmerId 
+                    ? (m.receiverName || m.toUserName || 'Unknown Buyer')
+                    : (m.senderName || m.fromUserName || m.buyerName || 'Unknown Buyer');
+                  
                   const key = `${productId}_${buyerId}`;
                   
                   if (!conversations[key]) {
                     conversations[key] = {
                       productId,
                       buyerId,
-                      buyerName: m.buyerName || m.fromUserName || 'Unknown Buyer',
+                      buyerName: buyerName,
                       productName: m.productName || products.find(p => p.id === productId)?.name || 'Unknown Product',
                       messages: []
                     };
@@ -895,22 +761,37 @@ const FarmerDashboard = () => {
                     const text = replyText[replyKey] || '';
                     if (!text.trim()) return;
 
-                    sendMessage({
-                      messageId: Date.now().toString(),
-                      buyerId: conv.buyerId,
-                      buyerName: conv.buyerName,
-                      farmerId: farmerId,
-                      farmerName: user?.name || 'Farmer',
-                      productId: conv.productId,
-                      productName: conv.productName,
-                      content: text.trim(),
-                      timestamp: Date.now(),
-                      fromUserId: farmerId,
-                      fromUserName: user?.name || 'Farmer',
-                      toUserId: conv.buyerId,
-                      body: text.trim(),
-                      senderRole: 'farmer'
-                    });
+                    try {
+                      await sendMessage({
+                        // Explicit sender/receiver identity - backend uses these as source of truth
+                        senderId: farmerId,
+                        senderName: user?.name || 'Farmer',
+                        receiverId: conv.buyerId,
+                        receiverName: conv.buyerName,
+                        senderRole: 'farmer',
+                        
+                        // Message content
+                        productId: conv.productId,
+                        productName: conv.productName,
+                        content: text.trim(),
+                        timestamp: Date.now(),
+                        
+                        // Backward compatibility fields
+                        messageId: Date.now().toString(),
+                        buyerId: conv.buyerId,
+                        buyerName: conv.buyerName,
+                        farmerId: farmerId,
+                        farmerName: user?.name || 'Farmer',
+                        fromUserId: farmerId,
+                        fromUserName: user?.name || 'Farmer',
+                        toUserId: conv.buyerId,
+                        toUserName: conv.buyerName,
+                        body: text.trim(),
+                      });
+                    } catch (error) {
+                      console.error('[FarmerDashboard] Error sending message:', error);
+                      alert('Failed to send message. Please try again.');
+                    }
 
                     setReplyText({ ...replyText, [replyKey]: '' });
                   };
@@ -967,11 +848,15 @@ const FarmerDashboard = () => {
                         borderRadius: '8px'
                       }}>
                         {conv.messages.map((msg) => {
-                          // Check if message was sent by current user (farmer)
-                          // Message is from farmer if: senderRole is 'farmer' OR fromUserId matches farmerId
-                          const isSentByCurrentUser = msg.senderRole === 'farmer' || 
-                                                      msg.fromUserId === farmerId || 
-                                                      (msg.farmerId === farmerId && msg.senderRole !== 'buyer');
+                          // Backend provides senderId - use it as single source of truth
+                          const senderId = msg.senderId || msg.fromUserId || '';
+                          const isSentByCurrentUser = senderId === farmerId;
+                          
+                          // Get sender name from backend data
+                          const senderName = isSentByCurrentUser 
+                            ? 'You' 
+                            : (msg.senderName || msg.fromUserName || msg.buyerName || conv.buyerName || 'Buyer');
+                          
                           return (
                             <div
                               key={msg.id}
@@ -995,7 +880,7 @@ const FarmerDashboard = () => {
                                   fontSize: '12px',
                                   opacity: 0.8
                                 }}>
-                                  {isSentByCurrentUser ? 'You' : (msg.buyerName || conv.buyerName || 'Buyer')}
+                                  {isSentByCurrentUser ? 'You' : senderName}
                                 </div>
                                 <div>{msg.content || msg.body}</div>
                                 <div style={{
@@ -1248,7 +1133,7 @@ const FarmerDashboard = () => {
                 }}>
                   <div style={{
                     display: 'grid',
-                    gridTemplateColumns: '1fr 2fr 1fr 1fr 1fr',
+                    gridTemplateColumns: '1fr 2fr 1fr 1fr 1fr 1.5fr',
                     gap: '16px',
                     padding: '16px 20px',
                     background: 'rgba(255, 255, 255, 0.1)',
@@ -1261,63 +1146,192 @@ const FarmerDashboard = () => {
                     <div>Qty</div>
                     <div>Total</div>
                     <div>Date</div>
+                    <div>Status / Actions</div>
                   </div>
-                  {myOrders.map((o) => (
-                    <div key={o.id} style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 2fr 1fr 1fr 1fr',
-                      gap: '16px',
-                      padding: '16px 20px',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-                      alignItems: 'center',
-                      transition: 'background-color 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                    }}>
-                      <div style={{ 
-                        color: 'rgba(255, 255, 255, 0.8)',
-                        fontSize: '14px',
-                        textAlign: 'center'
+                  {myOrders.map((o) => {
+                    const currentStatus = (o.status || 'PLACED').toUpperCase();
+                    const orderId = o.orderId || o.id;
+                    
+                    // Determine available actions based on current status
+                    const canAccept = currentStatus === 'PLACED';
+                    const canShip = currentStatus === 'ACCEPTED';
+                    const canComplete = currentStatus === 'SHIPPED';
+                    
+                    const handleStatusUpdate = async (newStatus) => {
+                      if (!orderId) return;
+                      try {
+                        await orderService.updateOrderStatus(orderId, newStatus);
+                        // Refresh orders after status update
+                        const farmerId = user?.id || user?.userId || user?.email;
+                        if (farmerId) {
+                          const fetchedOrders = await orderService.getFarmerOrders(farmerId);
+                          const transformed = (fetchedOrders || []).map(orderItem => ({
+                            id: orderItem.id || orderItem.orderItemId || '',
+                            orderId: orderItem.order?.id || orderItem.orderId || '',
+                            productId: orderItem.product?.id || orderItem.productId || '',
+                            productName: orderItem.product?.name || 'Unknown Product',
+                            buyerName: orderItem.order?.buyer?.name || orderItem.buyerName || 'Unknown Buyer',
+                            buyerId: orderItem.order?.buyer?.id || orderItem.buyerId || '',
+                            quantity: Number(orderItem.quantity || 0),
+                            total: Number(orderItem.priceAtPurchase || orderItem.price || 0) * Number(orderItem.quantity || 0),
+                            status: (orderItem.order?.orderStatus || orderItem.status || 'PLACED').toLowerCase(),
+                            createdAt: new Date(orderItem.order?.orderDate || orderItem.createdAt || Date.now()).getTime(),
+                            date: orderItem.order?.orderDate || orderItem.createdAt || new Date().toISOString(),
+                            priceAtPurchase: Number(orderItem.priceAtPurchase || orderItem.price || 0),
+                          }));
+                          setMyOrders(transformed);
+                        }
+                      } catch (error) {
+                        console.error('[FarmerDashboard] Error updating order status:', error);
+                        alert(error.message || 'Failed to update order status. Please try again.');
+                      }
+                    };
+                    
+                    const getStatusColor = (status) => {
+                      const s = status.toUpperCase();
+                      if (s === 'PLACED') return '#ffa500';
+                      if (s === 'ACCEPTED') return '#2196f3';
+                      if (s === 'SHIPPED') return '#9c27b0';
+                      if (s === 'COMPLETED') return '#5eed3a';
+                      if (s === 'CANCELLED') return '#f44336';
+                      return 'rgba(255, 255, 255, 0.8)';
+                    };
+                    
+                    return (
+                      <div key={o.id} style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 2fr 1fr 1fr 1fr 1.5fr',
+                        gap: '16px',
+                        padding: '16px 20px',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                        alignItems: 'center',
+                        transition: 'background-color 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
                       }}>
-                        {o.buyerName || 'Anonymous'}
+                        <div style={{ 
+                          color: 'rgba(255, 255, 255, 0.8)',
+                          fontSize: '14px',
+                          textAlign: 'center'
+                        }}>
+                          {o.buyerName || 'Anonymous'}
+                        </div>
+                        <div style={{ 
+                          color: 'white',
+                          fontSize: '14px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {o.productName}
+                        </div>
+                        <div style={{ 
+                          color: 'rgba(255, 255, 255, 0.8)',
+                          fontSize: '14px',
+                          textAlign: 'center'
+                        }}>
+                          {o.quantity}
+                        </div>
+                        <div style={{ 
+                          color: '#5eed3a',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          textAlign: 'center'
+                        }}>
+                          ₹{Number(o.total || 0).toFixed(2)}
+                        </div>
+                        <div style={{ 
+                          color: 'rgba(255, 255, 255, 0.8)',
+                          fontSize: '14px',
+                          textAlign: 'center'
+                        }}>
+                          {o.date ? new Date(o.date).toLocaleDateString() : 'N/A'}
+                        </div>
+                        <div style={{ 
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                          alignItems: 'center'
+                        }}>
+                          <div style={{
+                            color: getStatusColor(currentStatus),
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            textAlign: 'center',
+                            marginBottom: '4px'
+                          }}>
+                            {currentStatus}
+                          </div>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                            {canAccept && (
+                              <button
+                                onClick={() => handleStatusUpdate('ACCEPTED')}
+                                style={{
+                                  padding: '4px 8px',
+                                  background: '#2196f3',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: '500',
+                                  cursor: 'pointer',
+                                  transition: 'background-color 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => e.target.style.background = '#1976d2'}
+                                onMouseLeave={(e) => e.target.style.background = '#2196f3'}
+                              >
+                                Accept
+                              </button>
+                            )}
+                            {canShip && (
+                              <button
+                                onClick={() => handleStatusUpdate('SHIPPED')}
+                                style={{
+                                  padding: '4px 8px',
+                                  background: '#9c27b0',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: '500',
+                                  cursor: 'pointer',
+                                  transition: 'background-color 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => e.target.style.background = '#7b1fa2'}
+                                onMouseLeave={(e) => e.target.style.background = '#9c27b0'}
+                              >
+                                Ship
+                              </button>
+                            )}
+                            {canComplete && (
+                              <button
+                                onClick={() => handleStatusUpdate('COMPLETED')}
+                                style={{
+                                  padding: '4px 8px',
+                                  background: '#5eed3a',
+                                  color: 'black',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: '500',
+                                  cursor: 'pointer',
+                                  transition: 'background-color 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => e.target.style.background = '#4ddb2a'}
+                                onMouseLeave={(e) => e.target.style.background = '#5eed3a'}
+                              >
+                                Complete
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ 
-                        color: 'white',
-                        fontSize: '14px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {o.productName}
-                      </div>
-                      <div style={{ 
-                        color: 'rgba(255, 255, 255, 0.8)',
-                        fontSize: '14px',
-                        textAlign: 'center'
-                      }}>
-                        {o.quantity}
-                      </div>
-                      <div style={{ 
-                        color: '#5eed3a',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        textAlign: 'center'
-                      }}>
-                        ₹{Number(o.total || 0).toFixed(2)}
-                      </div>
-                      <div style={{ 
-                        color: 'rgba(255, 255, 255, 0.8)',
-                        fontSize: '14px',
-                        textAlign: 'center'
-                      }}>
-                        {o.date ? new Date(o.date).toLocaleDateString() : 'N/A'}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

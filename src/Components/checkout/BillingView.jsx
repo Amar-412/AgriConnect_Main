@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { orderService } from '../../services/orderService';
 import { downloadInvoicePdf, formatCurrency, formatInvoiceDate } from '../utils/invoiceUtils';
 import './Checkout.css';
 
@@ -64,123 +65,74 @@ const BillingView = ({ invoice, onPaymentSuccess, onBackToCart }) => {
     setError('');
     setStatus('Processing payment...');
 
-    setTimeout(() => {
+    // Process order via backend API
+    const processOrder = async () => {
       try {
         // Convert all prices and quantities to Number
         const normalizedItems = items.map(item => {
           // Get farmer info from item first, then fallback to product
           let farmerId = item.farmerId || '';
-          let farmerEmail = item.farmerEmail || '';
-          let farmerName = item.farmerName || '';
           
-          if (!farmerEmail && item.productId) {
+          if (!farmerId && item.productId) {
             const product = products.find(p => p.id === item.productId);
             if (product) {
               farmerId = product.farmerId || product.ownerId || '';
-              farmerEmail = product.farmerEmail || '';
-              farmerName = product.farmerName || '';
-            }
-          }
-          
-          // Last resort: try to find from allUsers
-          if (!farmerEmail && item.productId) {
-            const product = products.find(p => p.id === item.productId);
-            if (product && product.ownerId) {
-              const farmerUser = allUsers.find(u => u.id === product.ownerId || u.email === product.ownerId);
-              if (farmerUser) {
-                farmerEmail = farmerUser.email || '';
-                farmerName = farmerUser.name || '';
-                farmerId = farmerUser.email || farmerUser.id || '';
-              }
             }
           }
           
           return {
             productId: item.productId,
-            name: item.name || item.productName || 'Unknown Product',
-            price: Number(item.price || 0),
             quantity: Number(item.quantity || 0),
-            farmerId,
-            farmerEmail,
-            farmerName
+            price: Number(item.price || 0), // Price at purchase time
+            farmerId: farmerId, // Backend will validate farmer exists
           };
         });
-        
-        // Group items by farmer (handle multiple farmers per cart)
-        const itemsByFarmer = {};
-        normalizedItems.forEach(item => {
-          const farmerKey = item.farmerEmail || item.farmerId || 'unknown';
-          if (!itemsByFarmer[farmerKey]) {
-            itemsByFarmer[farmerKey] = {
-              farmerId: item.farmerId || '',
-              farmerEmail: item.farmerEmail || '',
-              farmerName: item.farmerName || 'Unknown Farmer',
-              items: []
-            };
-          }
-          itemsByFarmer[farmerKey].items.push(item);
+
+        // Get backend-verified buyer ID
+        const buyerId = user.id || user.userId || user.email || '';
+        if (!buyerId) {
+          throw new Error('User identity not available');
+        }
+
+        // Place order via backend API
+        // Backend will:
+        // - Validate buyer is BUYER role
+        // - Validate products exist
+        // - Validate farmers exist
+        // - Create Order and OrderItems
+        // - Capture priceAtPurchase for each item
+        // - Compute totalAmount
+        const orderResult = await orderService.placeOrder({
+          buyerId: buyerId,
+          items: normalizedItems,
         });
-        
-        // Create separate transaction for each farmer
-        const timestamp = Date.now();
-        const invoiceId = invoice?.invoiceNo || `INV_${timestamp}`;
-        const buyerId = user.userId || user.email || user.id || '';
-        const buyerEmail = user.email || buyerId;
-        const buyerName = user.name || 'Unknown Buyer';
-        
-        const newTransactions = [];
-        Object.values(itemsByFarmer).forEach((farmerData, index) => {
-          const transactionId = `TXN_${timestamp}_${index}`;
-          
-          // Compute total for this farmer's items
-          const farmerTotal = farmerData.items.reduce(
-            (sum, i) => sum + Number(i.price) * Number(i.quantity),
-            0
-          );
-          
-          const newTransaction = {
-            transactionId,
-            invoiceId,
-            buyerId,
-            buyerEmail,
-            buyerName,
-            farmerId: farmerData.farmerId,
-            farmerEmail: farmerData.farmerEmail,
-            farmerName: farmerData.farmerName,
-            items: farmerData.items,
-            total: farmerTotal,
-            status: "Completed",
-            date: new Date().toISOString(),
-            paymentMethod: 'Billing Dashboard'
-          };
-          
-          newTransactions.push(newTransaction);
-        });
-        
-        // Write all transactions to localStorage.transactions
-        const existingTransactions = JSON.parse(localStorage.getItem('transactions') || '[]');
-        existingTransactions.push(...newTransactions);
-        localStorage.setItem('transactions', JSON.stringify(existingTransactions));
-        
-        // THEN clear cart
+
+        // Order successfully created in backend
+        // Now clear cart (only after successful backend response)
         const userId = user.id || user.userId || user.email;
         clearCart(userId);
         
         const completedInvoice = {
           ...invoice,
           paidAt: new Date().toISOString(),
+          orderId: orderResult.id || orderResult.orderId, // Backend-provided order ID
         };
         
         setStatus('Purchase Successful!');
         onPaymentSuccess?.(completedInvoice);
       } catch (err) {
         console.error('[Billing] Payment processing error:', err);
-        setError('Payment failed. Please try again.');
+        setError(err.message || 'Payment failed. Please try again.');
         setProcessing(false);
         setStatus('We could not complete the payment.');
         // Do NOT clear cart on error
       }
-    }, 1000);
+    };
+
+    // Add small delay for UI feedback (processing state)
+    setTimeout(() => {
+      processOrder();
+    }, 500);
   };
 
   if (!invoice) {

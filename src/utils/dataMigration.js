@@ -67,54 +67,8 @@ export const migrateData = () => {
       }
     }
 
-    // Migrate products to unified schema
-    const products = JSON.parse(localStorage.getItem('products') || '[]');
-    if (Array.isArray(products)) {
-      const migratedProducts = products.map((p) => {
-        const migrated = { ...p };
-        
-        // Ensure price and quantity are numbers
-        if (typeof migrated.price === 'string') {
-          migrated.price = Number(migrated.price) || 0;
-          hasChanges = true;
-        }
-        if (typeof migrated.quantity === 'string') {
-          migrated.quantity = Number(migrated.quantity) || 0;
-          hasChanges = true;
-        }
-        if (!migrated.quantity && migrated.inventory !== undefined) {
-          migrated.quantity = Number(migrated.inventory) || 0;
-          hasChanges = true;
-        }
-        
-        // Add farmer info if missing
-        if (migrated.ownerId && !migrated.farmerId) {
-          migrated.farmerId = migrated.ownerId;
-          hasChanges = true;
-        }
-        
-        if (migrated.ownerId && !migrated.farmerEmail) {
-          try {
-            const users = JSON.parse(localStorage.getItem('users') || '[]');
-            const owner = users.find(u => u.id === migrated.ownerId || u.email === migrated.ownerId);
-            if (owner) {
-              migrated.farmerId = owner.email || owner.id;
-              migrated.farmerEmail = owner.email || '';
-              migrated.farmerName = owner.name || '';
-              hasChanges = true;
-            }
-          } catch (e) {
-            // Silent fail
-          }
-        }
-        
-        return migrated;
-      });
-      
-      if (hasChanges) {
-        localStorage.setItem('products', JSON.stringify(migratedProducts));
-      }
-    }
+    // Products are now managed by backend API - no localStorage migration needed
+    // Product data should be fetched from backend APIs only
 
     // Migrate cart items to optimized schema (only productId + quantity to avoid QuotaExceededError)
     const cartByUser = JSON.parse(localStorage.getItem('cart_by_user') || '{}');
@@ -186,17 +140,8 @@ export const migrateData = () => {
           }));
         }
         
-        // Ensure farmer info exists
-        if (!migrated.farmerEmail && migrated.items && migrated.items.length > 0) {
-          const firstItem = migrated.items[0];
-          const product = products.find(p => p.id === firstItem.productId);
-          if (product) {
-            migrated.farmerId = product.farmerId || product.ownerId || '';
-            migrated.farmerEmail = product.farmerEmail || '';
-            migrated.farmerName = product.farmerName || '';
-            hasChanges = true;
-          }
-        }
+        // Farmer info should come from transaction items or be set separately
+        // Products are now backend-only, so we can't look them up from localStorage
         
         // Ensure buyer info exists
         if (!migrated.buyerEmail && migrated.buyerId) {

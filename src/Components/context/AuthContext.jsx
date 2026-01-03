@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { authService } from '../../services/authService';
 
-const STORAGE_USER_KEY = 'loggedInUser'; // Unified key
-const STORAGE_USERS_KEY = 'users';
+const STORAGE_USER_KEY = 'loggedInUser'; // Store only logged-in user session (backend-verified)
+const STORAGE_USERS_KEY = 'users'; // Keep for admin dashboard (local cache only)
 const STORAGE_ROLES_KEY = 'roles'; // Maps email -> role for Google users
 
 const AuthContext = createContext(null);
@@ -25,6 +26,7 @@ const writeJson = (key, value) => {
 
 /**
  * Normalizes user object to unified schema
+ * Backend-provided id is the source of truth for user identity
  * { userId: string, email: string, name: string, role: string, picture?: string, loginType: "google"|"manual" }
  * Also includes id for backward compatibility
  */
@@ -39,18 +41,21 @@ const normalizeUser = (userData, loginType = 'manual') => {
     };
   }
   
-  // Migrate from old format
+  // Backend provides id - use it as source of truth
+  // For backward compatibility, also support email-based userId
   const email = userData.email || '';
-  const userId = email || userData.id || userData.userId || '';
+  const backendId = userData.id || userData.userId || '';
+  const userId = backendId || email; // Prefer backend id, fallback to email for Google users
   
-  // Normalize role to capitalized format
-  const role = userData.role 
-    ? (userData.role.charAt(0).toUpperCase() + userData.role.slice(1).toLowerCase())
-    : 'Buyer';
+  // Normalize role - backend returns FARMER/BUYER, normalize to capitalized format
+  let role = userData.role || 'Buyer';
+  if (role) {
+    role = role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+  }
   
   return {
-    userId,
-    id: userData.id || userId, // Keep id for backward compatibility
+    userId: backendId || userId, // Prefer backend id
+    id: backendId || userId, // Keep id for backward compatibility
     email,
     name: userData.name || '',
     role,
@@ -92,47 +97,79 @@ export const AuthProvider = ({ children }) => {
     writeJson(STORAGE_ROLES_KEY, rolesByEmail);
   }, [rolesByEmail]);
 
-  // Seed a default admin if none exists
-  useEffect(() => {
-    if (!allUsers || allUsers.length === 0) {
-      const adminUser = { id: 'admin-1', name: 'Admin', email: 'admin@example.com', password: 'admin', role: 'admin' };
-      setAllUsers([adminUser]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Note: Admin users should be created via backend API, not seeded in frontend
+  // allUsers is now just a local cache for admin dashboard display, not used for authentication
 
-  const register = (name, email, password, role) => {
-    const existing = allUsers.find((u) => u.email === email);
-    if (existing) {
-      throw new Error('Email already registered');
+  /**
+   * Register a new user via backend API
+   * Backend is the authority for user identity
+   */
+  const register = async (name, email, password, role) => {
+    try {
+      // Call backend API - backend validates and creates user
+      const userData = await authService.signup(name, email, password, role);
+      
+      // Backend returns user with id, name, email, role
+      // Use backend-provided id as the source of truth
+      const unifiedUser = normalizeUser({
+        id: userData.id,
+        userId: userData.id,
+        email: userData.email,
+        name: userData.name,
+        role: userData.role,
+        loginType: 'manual'
+      }, 'manual');
+      
+      setUser(unifiedUser);
+      
+      // Update local cache for admin dashboard (optional, not used for auth)
+      setAllUsers((prev) => {
+        const exists = prev.find(u => u.email === email);
+        if (!exists) {
+          return [...prev, unifiedUser];
+        }
+        return prev;
+      });
+    } catch (error) {
+      console.error('[AuthContext] Registration error:', error);
+      throw error;
     }
-    const newUser = { id: Date.now().toString(), name, email, password, role };
-    setAllUsers((prev) => [...prev, newUser]);
-    
-    // Create unified user object
-    const unifiedUser = normalizeUser({
-      email,
-      name,
-      role,
-      id: newUser.id
-    }, 'manual');
-    setUser(unifiedUser);
   };
 
-  const login = (email, password) => {
-    const found = allUsers.find((u) => u.email === email && u.password === password);
-    if (!found) {
-      throw new Error('Invalid credentials');
+  /**
+   * Login via backend API
+   * Backend validates credentials and returns user identity
+   */
+  const login = async (email, password) => {
+    try {
+      // Call backend API - backend validates credentials
+      const userData = await authService.login(email, password);
+      
+      // Backend returns user with id, name, email, role
+      // Use backend-provided id as the source of truth
+      const unifiedUser = normalizeUser({
+        id: userData.id,
+        userId: userData.id,
+        email: userData.email,
+        name: userData.name,
+        role: userData.role,
+        loginType: 'manual'
+      }, 'manual');
+      
+      setUser(unifiedUser);
+      
+      // Update local cache for admin dashboard (optional, not used for auth)
+      setAllUsers((prev) => {
+        const exists = prev.find(u => u.email === email);
+        if (!exists) {
+          return [...prev, unifiedUser];
+        }
+        return prev.map(u => u.email === email ? unifiedUser : u);
+      });
+    } catch (error) {
+      console.error('[AuthContext] Login error:', error);
+      throw error;
     }
-    
-    // Create unified user object
-    const unifiedUser = normalizeUser({
-      email: found.email,
-      name: found.name,
-      role: found.role,
-      id: found.id
-    }, 'manual');
-    setUser(unifiedUser);
   };
 
   /**

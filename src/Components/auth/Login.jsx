@@ -45,7 +45,7 @@ const Login = ({ onSuccess, onSwitchToRegister }) => {
     }
 
     try {
-      login(email, password);
+      await login(email, password);
       onSuccess?.();
     } catch (err) {
       setError(err.message || 'Login failed');

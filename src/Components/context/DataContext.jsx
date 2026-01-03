@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { productService } from '../../services/productService';
+import { reviewService } from '../../services/reviewService';
+import { messageService } from '../../services/messageService';
 
-const STORAGE_PRODUCTS_KEY = 'products';
 const STORAGE_ORDERS_KEY = 'orders';
-const STORAGE_REVIEWS_KEY = 'reviews';
-const STORAGE_MESSAGES_KEY = 'messages';
 const STORAGE_CART_KEY = 'cart_by_user';
 
 const DataContext = createContext(null);
@@ -24,69 +24,126 @@ const writeJson = (key, value) => {
 };
 
 export const DataProvider = ({ children }) => {
-  const [products, setProducts] = useState(() => readJson(STORAGE_PRODUCTS_KEY, []));
+  // Products, reviews, and messages are now fetched from backend
+  const [products, setProducts] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [messages, setMessages] = useState([]);
+  
+  // Orders and cart remain in localStorage
   const [orders, setOrders] = useState(() => readJson(STORAGE_ORDERS_KEY, []));
-  const [reviews, setReviews] = useState(() => readJson(STORAGE_REVIEWS_KEY, []));
-  const [messages, setMessages] = useState(() => readJson(STORAGE_MESSAGES_KEY, []));
   const [cartByUserId, setCartByUserId] = useState(() => readJson(STORAGE_CART_KEY, {}));
 
-  useEffect(() => {
-    writeJson(STORAGE_PRODUCTS_KEY, products);
-  }, [products]);
+  // Loading states
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [loadingReviews, setLoadingReviews] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(true);
 
+  // Fetch products from backend on mount
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        setLoadingProducts(true);
+        const fetchedProducts = await productService.getAllProducts();
+        setProducts(fetchedProducts || []);
+      } catch (error) {
+        console.error('[DataContext] Error loading products:', error);
+        // Fallback to empty array on error
+        setProducts([]);
+      } finally {
+        setLoadingProducts(false);
+      }
+    };
+
+    fetchProducts();
+  }, []);
+
+  // Fetch reviews from backend on mount
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        setLoadingReviews(true);
+        const fetchedReviews = await reviewService.getAllReviews();
+        setReviews(fetchedReviews || []);
+      } catch (error) {
+        console.error('[DataContext] Error loading reviews:', error);
+        // Fallback to empty array on error
+        setReviews([]);
+      } finally {
+        setLoadingReviews(false);
+      }
+    };
+
+    fetchReviews();
+  }, []);
+
+  // Fetch messages from backend on mount
+  useEffect(() => {
+    const fetchMessages = async () => {
+      try {
+        setLoadingMessages(true);
+        const fetchedMessages = await messageService.getAllMessages();
+        setMessages(fetchedMessages || []);
+      } catch (error) {
+        console.error('[DataContext] Error loading messages:', error);
+        // Fallback to empty array on error
+        setMessages([]);
+      } finally {
+        setLoadingMessages(false);
+      }
+    };
+
+    fetchMessages();
+  }, []);
+
+  // Keep orders in localStorage
   useEffect(() => {
     writeJson(STORAGE_ORDERS_KEY, orders);
   }, [orders]);
 
-  useEffect(() => {
-    writeJson(STORAGE_REVIEWS_KEY, reviews);
-  }, [reviews]);
-
-  useEffect(() => {
-    writeJson(STORAGE_MESSAGES_KEY, messages);
-  }, [messages]);
-
+  // Keep cart in localStorage
   useEffect(() => {
     writeJson(STORAGE_CART_KEY, cartByUserId);
   }, [cartByUserId]);
 
-  const addProduct = (product, farmerInfo) => {
-    // Ensure farmer info is included from logged-in user
-    const farmerId = farmerInfo?.userId || farmerInfo?.email || product.farmerId || product.ownerId || '';
-    const farmerEmail = farmerInfo?.email || product.farmerEmail || '';
-    const farmerName = farmerInfo?.name || product.farmerName || '';
-    
-    setProducts((prev) => [
-      ...prev,
-      {
-        ...product,
-        id: Date.now().toString(),
-        name: product.name || '',
-        price: Number(product.price || 0),
-        quantity: Number(product.quantity || product.inventory || 0),
-        farmerId,
-        farmerEmail,
-        farmerName,
-        image: product.image || product.imageDataUrl || '',
-        category: product.category || 'General',
-        location: product.location || '',
-        // Keep for backward compatibility
-        ownerId: farmerId,
-        imageDataUrl: product.image || product.imageDataUrl || '',
-        inventory: Number(product.quantity || product.inventory || 0)
-      },
-    ]);
+  const addProduct = async (product, farmerInfo) => {
+    try {
+      const newProduct = await productService.createProduct(product, farmerInfo);
+      // Refresh products list from backend
+      const fetchedProducts = await productService.getAllProducts();
+      setProducts(fetchedProducts || []);
+      return newProduct;
+    } catch (error) {
+      console.error('[DataContext] Error adding product:', error);
+      throw error;
+    }
   };
 
-  const updateProduct = (id, updates) => {
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+  const updateProduct = async (id, updates) => {
+    try {
+      await productService.updateProduct(id, updates);
+      // Refresh products list from backend
+      const fetchedProducts = await productService.getAllProducts();
+      setProducts(fetchedProducts || []);
+    } catch (error) {
+      console.error('[DataContext] Error updating product:', error);
+      throw error;
+    }
   };
 
-  const deleteProduct = (id) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+  const deleteProduct = async (id) => {
+    try {
+      await productService.deleteProduct(id);
+      // Refresh products list from backend
+      const fetchedProducts = await productService.getAllProducts();
+      setProducts(fetchedProducts || []);
+    } catch (error) {
+      console.error('[DataContext] Error deleting product:', error);
+      throw error;
+    }
   };
 
-  const placeOrder = (order) => {
+  const placeOrder = async (order) => {
+    // Add order to localStorage (orders remain in localStorage as specified)
     setOrders((prev) => [
       ...prev,
       {
@@ -96,10 +153,14 @@ export const DataProvider = ({ children }) => {
         createdAt: Date.now(),
       },
     ]);
-    // decrement product inventory
-    setProducts((prev) =>
-      prev.map((p) => (p.id === order.productId ? { ...p, inventory: Math.max(0, (p.inventory || 0) - (order.quantity || 0)) } : p))
-    );
+    // Product inventory is managed by backend - refresh products to get updated inventory
+    try {
+      const fetchedProducts = await productService.getAllProducts();
+      setProducts(fetchedProducts || []);
+    } catch (error) {
+      console.error('[DataContext] Error refreshing products after order:', error);
+      // Continue even if refresh fails - order is still placed
+    }
   };
 
   const updateOrderStatus = (id, status) => {
@@ -107,27 +168,31 @@ export const DataProvider = ({ children }) => {
   };
 
   // Reviews
-  const addReview = (review) => {
-    setReviews((prev) => [
-      ...prev,
-      {
-        ...review,
-        id: Date.now().toString(),
-        createdAt: Date.now(),
-      },
-    ]);
+  const addReview = async (review) => {
+    try {
+      const newReview = await reviewService.createReview(review);
+      // Refresh reviews list from backend
+      const fetchedReviews = await reviewService.getAllReviews();
+      setReviews(fetchedReviews || []);
+      return newReview;
+    } catch (error) {
+      console.error('[DataContext] Error adding review:', error);
+      throw error;
+    }
   };
 
   // Messages between buyer and farmer
-  const sendMessage = (message) => {
-    setMessages((prev) => [
-      ...prev,
-      {
-        ...message,
-        id: Date.now().toString(),
-        createdAt: Date.now(),
-      },
-    ]);
+  const sendMessage = async (message) => {
+    try {
+      const newMessage = await messageService.createMessage(message);
+      // Refresh messages list from backend
+      const fetchedMessages = await messageService.getAllMessages();
+      setMessages(fetchedMessages || []);
+      return newMessage;
+    } catch (error) {
+      console.error('[DataContext] Error sending message:', error);
+      throw error;
+    }
   };
 
   // Cart helpers - optimized to store only productId + quantity to avoid QuotaExceededError
@@ -210,6 +275,34 @@ export const DataProvider = ({ children }) => {
     setCartByUserId((prev) => ({ ...prev, [userId]: [] }));
   };
 
+  // Refresh functions for manual refresh
+  const refreshProducts = async () => {
+    try {
+      const fetchedProducts = await productService.getAllProducts();
+      setProducts(fetchedProducts || []);
+    } catch (error) {
+      console.error('[DataContext] Error refreshing products:', error);
+    }
+  };
+
+  const refreshReviews = async () => {
+    try {
+      const fetchedReviews = await reviewService.getAllReviews();
+      setReviews(fetchedReviews || []);
+    } catch (error) {
+      console.error('[DataContext] Error refreshing reviews:', error);
+    }
+  };
+
+  const refreshMessages = async () => {
+    try {
+      const fetchedMessages = await messageService.getAllMessages();
+      setMessages(fetchedMessages || []);
+    } catch (error) {
+      console.error('[DataContext] Error refreshing messages:', error);
+    }
+  };
+
   const value = useMemo(
     () => ({
       products,
@@ -217,6 +310,9 @@ export const DataProvider = ({ children }) => {
       reviews,
       messages,
       cartByUserId,
+      loadingProducts,
+      loadingReviews,
+      loadingMessages,
       addProduct,
       updateProduct,
       deleteProduct,
@@ -229,8 +325,11 @@ export const DataProvider = ({ children }) => {
       updateCartItemQuantity,
       clearCart,
       getCartItemWithDetails, // Helper to get full cart item details
+      refreshProducts,
+      refreshReviews,
+      refreshMessages,
     }),
-    [products, orders, reviews, messages, cartByUserId]
+    [products, orders, reviews, messages, cartByUserId, loadingProducts, loadingReviews, loadingMessages]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
